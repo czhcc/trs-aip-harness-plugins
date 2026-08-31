@@ -1,0 +1,10 @@
+# 使用本包的 Client 插件替换官方 Web 品牌占位组件。
+# 显式禁用官方配置，避免两个插件争用同一组单例插槽。
+
+- id: ui-brand-official
+  disabled: true
+
+- insert:
+    - id: trs-aip-client-branding
+      name: '@trs-aip/dsh-client-branding'
+

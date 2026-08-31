@@ -1,0 +1,67 @@
+{
+  "name": "@trs-aip/dsh-client-branding",
+  "description": "Installable TRS-AIP brand occupants and theme-token overrides for the DSH Web Client",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "types": "./lib/types/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/index.js.map",
+    "lib/client.js",
+    "lib/client.js.map",
+    "lib/types/**/*.d.ts",
+    "lib/types/**/*.d.ts.map",
+    "cordis.patch.yml"
+  ],
+  "license": "UNLICENSED",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-sidebar",
+        "@deepseek-ai/dsh-client-ui-theme"
+      ],
+      "platform": "web"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b && tsdown",
+    "typecheck": "tsc -b --pretty false",
+    "watch": "tsdown --watch"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "4.0.1",
+    "@deepseek-ai/dsh-client-ui-conversation": "0.1.2-alpha.1",
+    "@deepseek-ai/dsh-client-ui-renderer": "0.1.2-alpha.1",
+    "@deepseek-ai/dsh-client-ui-sidebar": "0.1.2-alpha.1",
+    "@deepseek-ai/dsh-client-ui-theme": "0.1.2-alpha.1"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "link:../../../deepseek-harness/vendor/cordis",
+    "@deepseek-ai/dsh-client-ui-conversation": "link:../../../deepseek-harness/packages/client/ui-conversation",
+    "@deepseek-ai/dsh-client-ui-renderer": "link:../../../deepseek-harness/packages/client/ui-renderer",
+    "@deepseek-ai/dsh-client-ui-sidebar": "link:../../../deepseek-harness/packages/client/ui-sidebar",
+    "@deepseek-ai/dsh-client-ui-theme": "link:../../../deepseek-harness/packages/client/ui-theme",
+    "@types/react": "~18.3.1",
+    "react": "^18.2.0",
+    "tsdown": "^0.22.2",
+    "typescript": "^6.0.3"
+  }
+}
+

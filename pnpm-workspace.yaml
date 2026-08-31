@@ -1,0 +1,11 @@
+packages:
+  - packages/*
+
+peerDependencyRules:
+  allowedVersions:
+    typescript: '>=5 <7'
+
+# pnpm 10+ 默认拒绝执行依赖包的生命周期脚本，除非显式审核并授权。
+# 本工作区不授权依赖包执行构建脚本。
+allowBuilds: {}
+
