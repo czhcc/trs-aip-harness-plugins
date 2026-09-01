@@ -1,0 +1,4 @@
+# 安装宿主设置注册、动态 MCP 协调器和对应的 Web 设置页面。
+- insert:
+    - id: trs-aip-mcp-settings
+      name: '@trs-aip/dsh-mcp-settings'
