@@ -19,7 +19,10 @@ export function dshClientPlugin(packageName: string) {
   return defineConfig([
     {
       name: `${packageName}/host`,
-      entry: { index: 'src/index.ts' },
+      // Consume TypeScript's emitted JavaScript, matching the Harness build.
+      // This is required for standard decorators such as @Remote to be lowered
+      // before Rolldown bundles the Host entry.
+      entry: { index: 'lib/types/index.js' },
       outDir: 'lib',
       format: ['esm'],
       platform: 'node',

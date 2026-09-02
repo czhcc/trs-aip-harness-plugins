@@ -6,6 +6,7 @@ import type {} from '@deepseek-ai/dsh-credentials/types'
 import * as McpClient from '@deepseek-ai/dsh-mcp-client'
 import type { Config as McpClientConfig } from '@deepseek-ai/dsh-mcp-client'
 import type {} from '@deepseek-ai/dsh-settings'
+import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import z from '@deepseek-ai/schemastery'
 import {
   DEFAULT_RECONNECT,
@@ -15,8 +16,12 @@ import {
   type McpServerSettings,
   type McpSettings,
 } from './model.js'
+import { MCP_STATUS_NAMESPACE, MCP_STATUS_REMOTE, MCP_STATUS_SERVICE } from './status-remote.js'
+import { McpStatusDirectory, type McpRuntimeSnapshot } from './status.js'
 
 export * from './model.js'
+export * from './status.js'
+export { MCP_STATUS_REMOTE } from './status-remote.js'
 
 const ReconnectSchema = z.object({
   enabled: z.boolean().default(DEFAULT_RECONNECT.enabled),
@@ -87,10 +92,14 @@ export class McpCoordinator {
   private desired: McpSettings = { servers: [] }
   private disposed = false
 
-  constructor(private readonly ctx: Context) {}
+  constructor(
+    private readonly ctx: Context,
+    private readonly status: McpStatusDirectory,
+  ) {}
 
   update(next: McpSettings): Promise<void> {
     this.desired = next
+    this.status.configure(next)
     return this.enqueue(() => this.reconcile(next, new Set()))
   }
 
@@ -124,7 +133,7 @@ export class McpCoordinator {
       const server = desired.get(serverName)
       const changed = server === undefined || entry.fingerprint !== fingerprint(server)
       const credentialChanged = [...refreshedRefs].some(ref => entry.credentialRefs.has(ref))
-      if (changed || credentialChanged) await this.stop(serverName, entry)
+      if (changed || credentialChanged) await this.stop(serverName, entry, server !== undefined)
     }
 
     for (const server of desired.values()) {
@@ -133,7 +142,9 @@ export class McpCoordinator {
     }
   }
 
-  private async stop(serverName: string, entry: ActiveServer): Promise<void> {
+  private async stop(serverName: string, entry: ActiveServer, restarting = false): Promise<void> {
+    const configured = this.desired.servers.find(server => server.serverName === serverName)
+    if (configured !== undefined) this.status.setPhase(configured, restarting ? 'restarting' : 'stopping')
     this.active.delete(serverName)
     try {
       await entry.fiber.dispose()
@@ -141,11 +152,13 @@ export class McpCoordinator {
     } catch (error) {
       this.ctx.logger.warn(`mcp-settings(${serverName}): cleanup failed: ${error instanceof Error ? error.message : String(error)}`)
     }
+    if (!restarting) this.status.markStopped(serverName)
   }
 
   private async start(server: McpServerSettings): Promise<void> {
     const secrets: string[] = []
     let fiber: Fiber | undefined
+    this.status.setPhase(server, 'starting')
     try {
       const config = await this.resolveConfig(server, secrets)
       fiber = this.ctx.plugin(McpClient, config)
@@ -156,12 +169,15 @@ export class McpCoordinator {
         credentialRefs: referencedCredentials(server),
       })
       this.ctx.logger.info(`mcp-settings(${server.serverName}): activated`)
+      this.status.setPhase(server, 'active')
+      this.status.refreshTools()
     } catch (error) {
       if (fiber !== undefined) await fiber.dispose().catch(() => {})
       let message = error instanceof Error ? error.message : String(error)
       for (const secret of secrets) {
         if (secret !== '') message = message.replaceAll(secret, '[REDACTED]')
       }
+      this.status.setPhase(server, 'activation-failed', message)
       this.ctx.logger.warn(`mcp-settings(${server.serverName}): activation failed: ${message}`)
     }
   }
@@ -199,6 +215,24 @@ export class McpCoordinator {
   }
 }
 
+declare module '@deepseek-ai/cordis' {
+  interface Context {
+    trsAipMcpStatusController: McpStatusController
+  }
+}
+
+/** Read-only Remote owner for coordinator/tool-discovery status. */
+export class McpStatusController extends TypertRemoteService {
+  constructor(ctx: Context, private readonly directory: McpStatusDirectory) {
+    super(ctx, MCP_STATUS_SERVICE, { namespace: MCP_STATUS_NAMESPACE })
+  }
+
+  @Remote
+  snapshot(): McpRuntimeSnapshot {
+    return this.directory.snapshot()
+  }
+}
+
 /** Register settings and mount the coordinator only once Settings, Credentials and Tools exist. */
 export function apply(ctx: Context): void {
   ctx.inject(['settings', 'credentials', 'tools'], async (runtimeCtx) => {
@@ -209,13 +243,17 @@ export function apply(ctx: Context): void {
         if (errors.length > 0) throw new Error(errors.join('；'))
       },
     })
-    const coordinator = new McpCoordinator(runtimeCtx)
+    const status = new McpStatusDirectory(runtimeCtx)
+    new McpStatusController(runtimeCtx, status)
+    const coordinator = new McpCoordinator(runtimeCtx, status)
     const unwatch = scope.watch(next => coordinator.update(next))
     const offCredential = runtimeCtx.on('credentials/reference-updated', ref => coordinator.restartCredential(ref))
+    const offTools = runtimeCtx.on('tools/change', () => { status.refreshTools() })
     await coordinator.update(scope.get())
     return async () => {
       unwatch()
       offCredential()
+      offTools()
       await coordinator.dispose()
     }
   })

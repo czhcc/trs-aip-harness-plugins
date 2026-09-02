@@ -17,6 +17,8 @@ const mcpHost = await readText('packages/mcp-settings/src/index.ts')
 const mcpModel = await readText('packages/mcp-settings/src/model.ts')
 const mcpClient = await readText('packages/mcp-settings/src/client/index.ts')
 const mcpSection = await readText('packages/mcp-settings/src/client/McpSettingsSection.tsx')
+const mcpStatus = await readText('packages/mcp-settings/src/status.ts')
+const mcpStatusRemote = await readText('packages/mcp-settings/src/status-remote.ts')
 
 const failures = []
 const check = (condition, message) => {
@@ -62,11 +64,14 @@ check(brand.includes("const HERO_HEADLINE = '驱动智能探索图谱'"), '品�
 check(brand.includes('useTrsAipHeroHeadline(size === 34)'), '标题覆盖必须仅作用于 34 px Hero 品牌标记')
 check(brand.includes('[data-slot="conversation.hero.brand.mark"]'), '标题覆盖必须通过 Hero slot 锚点定位')
 check(build.includes('window.__ModuleLoader__.load'), 'Client 构建产物必须注册到 DSH 模块加载器')
+check(build.includes("entry: { index: 'lib/types/index.js' }"), 'Host 构建必须消费 TypeScript 产物以转译 Remote 装饰器')
 
 check(mcp.name === '@trs-aip/dsh-mcp-settings', 'MCP 包名不正确')
 check(mcp.exports?.['./client']?.default === './lib/client.js', 'MCP Client 导出必须指向 lib/client.js')
 check(mcp.dsh?.bundle?.patch === './cordis.patch.yml', 'MCP Bundle 清单必须暴露 cordis.patch.yml')
 check(mcp.dsh?.client?.platform === 'web', 'MCP Client 清单必须声明 web 平台')
+check(mcp.scripts?.build?.includes('node --check lib/index.js'), 'MCP 构建必须检查 Host 产物可被 Node 解析')
+check(mcp.dsh?.client?.inject?.includes('@deepseek-ai/dsh-api-remotes'), 'MCP Client 必须注入凭据 Remote 外观')
 check(/name:\s*['"]?@trs-aip\/dsh-mcp-settings['"]?/.test(mcpPatch), 'MCP Bundle 必须插入自身插件')
 check(mcpModel.includes("MCP_SETTINGS_NAMESPACE = 'trs-aip-mcp'"), 'MCP 设置命名空间不正确')
 check(mcpModel.includes('validateMcpSettings'), 'MCP 配置必须提供跨字段和唯一性校验')
@@ -74,8 +79,28 @@ check(mcpHost.includes('settings.register(MCP_SETTINGS_NAMESPACE'), '宿主端�
 check(mcpHost.includes('new McpCoordinator'), '宿主端必须安装 MCP 实例协调器')
 check(mcpHost.includes("credentials/reference-updated"), '凭据更新必须触发相关 MCP 实例刷新')
 check(mcpHost.includes('this.ctx.plugin(McpClient, config)'), '协调器必须动态挂载 dsh-mcp-client')
+check(mcpHost.includes('new McpStatusController'), '宿主端必须安装 MCP 只读状态服务')
+check(/@Remote\s+snapshot\(\)/.test(mcpHost), 'MCP 状态 snapshot 必须标记为 Host Remote 路由')
+check(mcpHost.includes("runtimeCtx.on('tools/change'"), '工具注册变化必须刷新 MCP 工具数量')
+check(mcpStatus.includes("'activation-failed'"), 'MCP 状态目录必须保留实例激活失败状态')
+check(mcpStatus.includes("'restarting'"), 'MCP 状态目录必须区分实例重新启动状态')
+check(mcpStatusRemote.includes("result: { mode: 'src-json' }"), 'MCP 状态 Remote 必须使用 JSON 边界结果')
 check(mcpClient.includes("name: 'settings.section'"), '浏览器端必须注册独立设置页面')
-for (const capability of ['添加客户端', 'streamable-http', 'envCredentialRefs', 'headerCredentialRefs', 'scope.mutate']) {
+check(mcpClient.includes('ctx.remote.$mount(MCP_STATUS_REMOTE)'), '浏览器端必须挂载 MCP 状态 Remote')
+check(mcpClient.includes("'remote.trsAipMcp'"), 'MCP 设置 UI 必须显式注入动态状态 Remote namespace')
+check(mcpClient.includes('ctx.remote.credentials.set'), '浏览器端凭据值必须通过凭据 Remote 写入')
+for (const capability of [
+  '添加客户端',
+  'streamable-http',
+  'envCredentialRefs',
+  'headerCredentialRefs',
+  'scope.mutate',
+  '复制',
+  '导入 JSON',
+  '导出 JSON',
+  'window.confirm',
+  '已发现 ${status.toolCount} 个工具',
+]) {
   check(mcpSection.includes(capability), `MCP 设置页面缺少能力：${capability}`)
 }
 
@@ -83,5 +108,5 @@ if (failures.length > 0) {
   console.error(`校验失败：\n- ${failures.join('\n- ')}`)
   process.exitCode = 1
 } else {
-  console.log('校验通过：品牌插件 + MCP 设置命名空间、动态协调器、双传输设置页和 DSH 模块工厂')
+  console.log('校验通过：品牌插件 + MCP 阶段二状态 Remote、凭据控件、配置导入导出和 stdio 安全确认')
 }

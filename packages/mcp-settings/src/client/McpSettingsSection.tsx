@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
-import type { CSSProperties, ReactNode } from 'react'
+import type { ChangeEvent, CSSProperties, ReactNode } from 'react'
+import type { CredentialInfo } from '@deepseek-ai/dsh-api-remotes/client'
 import type {
   SettingsScope,
   SettingsSectionOwnerProps,
@@ -12,9 +13,18 @@ import {
   type McpSettings,
   type McpStdioServer,
 } from '../model.js'
+import type { McpRuntimeSnapshot, McpServerRuntimeStatus } from '../status.js'
+
+export interface McpSettingsOperations {
+  loadStatus(): Promise<McpRuntimeSnapshot | undefined>
+  describeCredentials(refs: string[]): Promise<Record<string, CredentialInfo>>
+  setCredential(ref: string, value: string): Promise<string | undefined>
+  unsetCredential(ref: string): Promise<string | undefined>
+}
 
 interface McpSettingsSectionProps extends SettingsSectionOwnerProps {
   scope: SettingsScope<McpSettings>
+  operations: McpSettingsOperations
 }
 
 const styles: Record<string, CSSProperties> = {
@@ -25,6 +35,7 @@ const styles: Record<string, CSSProperties> = {
   button: { border: '1px solid var(--dsw-alias-border-l1)', borderRadius: 8, padding: '7px 12px', background: 'var(--dsw-alias-bg-layer-1)', color: 'inherit', cursor: 'pointer' },
   primaryButton: { border: 0, borderRadius: 8, padding: '8px 14px', background: 'var(--dsw-alias-brand-primary)', color: '#fff', cursor: 'pointer' },
   dangerButton: { border: '1px solid #d33a4a66', borderRadius: 8, padding: '7px 12px', background: 'transparent', color: '#d33a4a', cursor: 'pointer' },
+  badge: { display: 'inline-flex', alignItems: 'center', borderRadius: 999, padding: '3px 8px', background: 'var(--dsw-alias-bg-base)', color: 'var(--dsw-alias-label-secondary)', fontSize: 12, fontWeight: 500 },
   card: { display: 'grid', gap: 14, border: '1px solid var(--dsw-alias-border-l1)', borderRadius: 12, padding: 16, background: 'var(--dsw-alias-bg-layer-1)' },
   cardHead: { display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', justifyContent: 'space-between' },
   cardTitle: { display: 'flex', gap: 10, alignItems: 'center', fontWeight: 650 },
@@ -41,6 +52,38 @@ const styles: Record<string, CSSProperties> = {
   error: { margin: 0, borderRadius: 8, padding: '10px 12px', background: '#d33a4a14', color: '#d33a4a', lineHeight: 1.5 },
   muted: { margin: 0, color: 'var(--dsw-alias-label-secondary)', fontSize: 13 },
   empty: { border: '1px dashed var(--dsw-alias-border-l1)', borderRadius: 12, padding: 28, textAlign: 'center', color: 'var(--dsw-alias-label-secondary)' },
+  credentialRow: { display: 'grid', gridTemplateColumns: 'minmax(150px, 1fr) minmax(180px, 1.4fr) auto', gap: 10, alignItems: 'end' },
+}
+
+function runtimeLabel(status: McpServerRuntimeStatus | undefined): string {
+  if (status === undefined) return '状态待同步'
+  switch (status.phase) {
+    case 'disabled': return '已禁用'
+    case 'configured': return '等待启动'
+    case 'starting': return '正在启动实例'
+    case 'active': return '实例已激活，未发现工具'
+    case 'tools-available': return `已发现 ${status.toolCount} 个工具`
+    case 'restarting': return '正在重新启动实例'
+    case 'stopping': return '正在停止实例'
+    case 'activation-failed': return '实例激活失败'
+  }
+}
+
+function credentialRefs(settings: McpSettings): string[] {
+  const refs = new Set<string>()
+  for (const server of settings.servers) {
+    const source = server.transport === 'stdio' ? server.envCredentialRefs : server.headerCredentialRefs
+    for (const ref of Object.values(source)) if (ref !== '') refs.add(ref)
+  }
+  return [...refs].sort()
+}
+
+function uniqueCopyName(base: string, maximumLength: number, used: ReadonlySet<string>): string {
+  for (let number = 1; ; number += 1) {
+    const suffix = number === 1 ? '_copy' : `_copy${number}`
+    const candidate = `${base.slice(0, Math.max(1, maximumLength - suffix.length))}${suffix}`
+    if (!used.has(candidate)) return candidate
+  }
 }
 
 function mapToText(value: Record<string, string>): string {
@@ -85,7 +128,8 @@ function transportChanged(server: McpServerSettings, transport: McpServerSetting
   if (server.transport === transport) return server
   const common = {
     id: server.id,
-    enabled: server.enabled,
+    // Switching to a local process transport must never silently execute it.
+    enabled: transport === 'stdio' ? false : server.enabled,
     serverName: server.serverName,
     toolCallTimeoutMs: server.toolCallTimeoutMs,
     failOnStartupError: server.failOnStartupError,
@@ -99,8 +143,10 @@ function transportChanged(server: McpServerSettings, transport: McpServerSetting
 function ServerCard(props: {
   index: number
   server: McpServerSettings
+  runtime: McpServerRuntimeStatus | undefined
   disabled: boolean
   update: (server: McpServerSettings) => void
+  copy: () => void
   remove: () => void
 }): ReactNode {
   const { server, disabled, update } = props
@@ -117,12 +163,24 @@ function ServerCard(props: {
             checked={server.enabled}
             disabled={disabled}
             aria-label={`启用 ${server.serverName || `客户端 ${props.index + 1}`}`}
-            onChange={event => { patch({ enabled: event.target.checked }) }}
+            onChange={event => {
+              const enabled = event.target.checked
+              if (enabled && server.transport === 'stdio' && !window.confirm(
+                `启用 stdio MCP“${server.serverName || server.id}”将允许宿主在 Agent 沙箱之外执行“${server.command || '尚未填写的命令'}”及其参数。确认启用吗？`,
+              )) return
+              patch({ enabled })
+            }}
           />
           {server.serverName || `客户端 ${props.index + 1}`}
+          <span style={styles.badge} title={props.runtime?.message}>{runtimeLabel(props.runtime)}</span>
         </span>
-        <button type="button" style={styles.dangerButton} disabled={disabled} onClick={props.remove}>删除</button>
+        <span style={styles.toolbar}>
+          <button type="button" style={styles.button} disabled={disabled} onClick={props.copy}>复制</button>
+          <button type="button" style={styles.dangerButton} disabled={disabled} onClick={props.remove}>删除</button>
+        </span>
       </header>
+
+      {props.runtime?.message === undefined ? null : <p style={styles.error} role="alert">{props.runtime.message}</p>}
 
       <div style={styles.grid}>
         <label style={styles.field}>
@@ -213,7 +271,7 @@ function ServerCard(props: {
 }
 
 /** Independent Settings section for editing the durable MCP server array. */
-export function McpSettingsSection({ scope }: McpSettingsSectionProps): ReactNode {
+export function McpSettingsSection({ scope, operations }: McpSettingsSectionProps): ReactNode {
   const subscribe = useCallback((listener: () => void) => scope.subscribe(listener), [scope])
   const getSnapshot = useCallback(() => scope.getSnapshot(), [scope])
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
@@ -221,6 +279,10 @@ export function McpSettingsSection({ scope }: McpSettingsSectionProps): ReactNod
   const [dirty, setDirty] = useState(false)
   const [baseRevision, setBaseRevision] = useState<number>()
   const [status, setStatus] = useState('')
+  const [runtime, setRuntime] = useState<McpRuntimeSnapshot>()
+  const [credentialInfo, setCredentialInfo] = useState<Record<string, CredentialInfo>>({})
+  const [credentialDrafts, setCredentialDrafts] = useState<Record<string, string>>({})
+  const [operationError, setOperationError] = useState('')
 
   useEffect(() => {
     if (snapshot.status !== 'ready' || snapshot.value === undefined || dirty) return
@@ -228,9 +290,47 @@ export function McpSettingsSection({ scope }: McpSettingsSectionProps): ReactNod
     setBaseRevision(snapshot.revision)
   }, [snapshot.status, snapshot.value, snapshot.revision, dirty])
 
+  useEffect(() => {
+    let active = true
+    const refresh = async (): Promise<void> => {
+      try {
+        const next = await operations.loadStatus()
+        if (active) setRuntime(next)
+      } catch (error) {
+        if (active) setOperationError(`读取 MCP 运行状态失败：${error instanceof Error ? error.message : String(error)}`)
+      }
+    }
+    void refresh()
+    const timer = window.setInterval(() => { void refresh() }, 1_500)
+    return () => {
+      active = false
+      window.clearInterval(timer)
+    }
+  }, [operations])
+
   const errors = useMemo(() => draft === undefined ? [] : validateMcpSettings(draft), [draft])
+  const refs = useMemo(() => draft === undefined ? [] : credentialRefs(draft), [draft])
+  const refsKey = refs.join('\u0000')
+  const runtimeByName = useMemo(
+    () => new Map(runtime?.servers.map(server => [server.serverName, server]) ?? []),
+    [runtime],
+  )
   const disabled = !snapshot.writable
   const remoteChanged = dirty && baseRevision !== undefined && snapshot.revision !== baseRevision
+
+  const refreshCredentials = useCallback(async (): Promise<void> => {
+    if (refs.length === 0) {
+      setCredentialInfo({})
+      return
+    }
+    try {
+      setCredentialInfo(await operations.describeCredentials(refs))
+    } catch (error) {
+      setOperationError(`读取凭据状态失败：${error instanceof Error ? error.message : String(error)}`)
+    }
+  }, [operations, refsKey])
+
+  useEffect(() => { void refreshCredentials() }, [refreshCredentials])
 
   const change = (next: McpSettings): void => {
     setDraft(next)
@@ -248,6 +348,96 @@ export function McpSettingsSection({ scope }: McpSettingsSectionProps): ReactNod
     let number = draft.servers.length + 1
     while (draft.servers.some(server => server.serverName === `server_${number}`)) number += 1
     change({ servers: [...draft.servers, createDefaultStdioServer(`mcp_${Date.now().toString(36)}`, `server_${number}`)] })
+  }
+  const copyServer = (index: number): void => {
+    if (draft === undefined) return
+    const source = structuredClone(draft.servers[index])
+    if (source === undefined) return
+    source.id = uniqueCopyName(source.id, 64, new Set(draft.servers.map(server => server.id)))
+    source.serverName = uniqueCopyName(source.serverName, 32, new Set(draft.servers.map(server => server.serverName)))
+    source.enabled = false
+    const servers = [...draft.servers]
+    servers.splice(index + 1, 0, source)
+    change({ servers })
+    setStatus('已复制客户端；副本默认禁用')
+  }
+  const exportSettings = (): void => {
+    if (draft === undefined) return
+    const payload = JSON.stringify({
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      servers: draft.servers,
+    }, null, 2)
+    const url = URL.createObjectURL(new Blob([payload], { type: 'application/json' }))
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = 'trs-aip-mcp-settings.json'
+    anchor.click()
+    URL.revokeObjectURL(url)
+    setStatus('已导出配置（仅含凭据引用，不含凭据值）')
+  }
+  const importSettings = async (event: ChangeEvent<HTMLInputElement>): Promise<void> => {
+    const input = event.currentTarget
+    const file = input.files?.[0]
+    input.value = ''
+    if (file === undefined) return
+    setOperationError('')
+    try {
+      if (file.size > 1_048_576) throw new Error('导入文件不能超过 1 MiB')
+      const raw = JSON.parse(await file.text()) as unknown
+      if (typeof raw !== 'object' || raw === null || !('servers' in raw) || !Array.isArray(raw.servers)) {
+        throw new Error('文件必须包含 servers 数组')
+      }
+      const candidate = {
+        servers: structuredClone(raw.servers).map((server: unknown) => {
+          if (typeof server !== 'object' || server === null) return server
+          return 'transport' in server && server.transport === 'stdio'
+            ? { ...server, enabled: false }
+            : server
+        }),
+      } as McpSettings
+      const importedErrors = validateMcpSettings(candidate)
+      if (importedErrors.length > 0) throw new Error(importedErrors.join('；'))
+      change(candidate)
+      setStatus('已导入为未保存草稿；stdio 客户端已全部禁用')
+    } catch (error) {
+      setOperationError(`导入失败：${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+  const storeCredential = async (ref: string): Promise<void> => {
+    const value = credentialDrafts[ref] ?? ''
+    if (value === '') {
+      setOperationError(`凭据“${ref}”不能为空`)
+      return
+    }
+    setOperationError('')
+    try {
+      const error = await operations.setCredential(ref, value)
+      if (error !== undefined) {
+        setOperationError(`保存凭据“${ref}”失败：${error}`)
+        return
+      }
+      setCredentialDrafts(current => ({ ...current, [ref]: '' }))
+      setStatus(`凭据“${ref}”已保存；值不会回显`)
+      await refreshCredentials()
+    } catch (error) {
+      setOperationError(`保存凭据“${ref}”失败：${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+  const removeCredential = async (ref: string): Promise<void> => {
+    if (!window.confirm(`确认删除凭据“${ref}”吗？其他引用同名凭据的功能也会受到影响。`)) return
+    setOperationError('')
+    try {
+      const error = await operations.unsetCredential(ref)
+      if (error !== undefined) {
+        setOperationError(`删除凭据“${ref}”失败：${error}`)
+        return
+      }
+      setStatus(`凭据“${ref}”已删除`)
+      await refreshCredentials()
+    } catch (error) {
+      setOperationError(`删除凭据“${ref}”失败：${error instanceof Error ? error.message : String(error)}`)
+    }
   }
   const discard = (): void => {
     if (snapshot.value === undefined) return
@@ -269,7 +459,7 @@ export function McpSettingsSection({ scope }: McpSettingsSectionProps): ReactNod
       }
       setBaseRevision(accepted.revision)
       setDirty(false)
-      setStatus('已保存；连接结果请查看宿主日志')
+      setStatus('已保存；运行结果将在状态徽标中更新')
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error))
     }
@@ -297,7 +487,7 @@ export function McpSettingsSection({ scope }: McpSettingsSectionProps): ReactNod
     <section style={styles.page}>
       <div>
         <h2 style={styles.heading}>MCP 客户端</h2>
-        <p style={styles.intro}>管理宿主全局 MCP 工具。保存表示配置已持久化，连接与工具发现结果请查看宿主日志。</p>
+        <p style={styles.intro}>管理宿主全局 MCP 工具。状态表示协调器实例生命周期和宿主已注册的工具数，不代表底层 MCP 协议连接状态。</p>
       </div>
       {!snapshot.writable ? <p style={styles.warning}>当前设置提供者不可写，所有编辑操作已禁用。</p> : null}
       {draft.servers.some(server => server.enabled && server.transport === 'stdio')
@@ -307,13 +497,62 @@ export function McpSettingsSection({ scope }: McpSettingsSectionProps): ReactNod
       {errors.length > 0
         ? <div style={styles.error} role="alert">{errors.map(error => <div key={error}>{error}</div>)}</div>
         : null}
+      {operationError === '' ? null : <p style={styles.error} role="alert">{operationError}</p>}
       <div style={styles.toolbar}>
         <button type="button" style={styles.primaryButton} disabled={disabled} onClick={add}>添加客户端</button>
         <button type="button" style={styles.primaryButton} disabled={disabled || !dirty || errors.length > 0} onClick={() => { void save() }}>保存</button>
         <button type="button" style={styles.button} disabled={!dirty} onClick={discard}>放弃修改</button>
         <button type="button" style={styles.button} disabled={disabled} onClick={() => { void restore() }}>恢复默认</button>
+        <button type="button" style={styles.button} onClick={exportSettings}>导出 JSON</button>
+        <label style={{ ...styles.button, cursor: disabled ? 'default' : 'pointer' }}>
+          导入 JSON
+          <input type="file" accept="application/json,.json" disabled={disabled} hidden onChange={event => { void importSettings(event) }} />
+        </label>
         {status === '' ? null : <span style={styles.muted} role="status">{status}</span>}
       </div>
+
+      <article style={styles.card}>
+        <header style={styles.cardHead}>
+          <strong>引用凭据</strong>
+          <span style={styles.muted}>凭据值只写入宿主凭据存储，页面不会读取或导出。</span>
+        </header>
+        {refs.length === 0
+          ? <p style={styles.muted}>当前草稿未引用凭据。</p>
+          : refs.map((ref) => {
+              const info = credentialInfo[ref]
+              const writable = snapshot.writable && info?.writable === true
+              return (
+                <div key={ref} style={styles.credentialRow}>
+                  <span style={styles.field}>
+                    <code>{ref}</code>
+                    <span style={styles.muted}>
+                      {info === undefined
+                        ? '状态待同步'
+                        : info.configured
+                          ? `已配置${info.source === undefined ? '' : `（${info.source}）`}`
+                          : '未配置'}
+                    </span>
+                  </span>
+                  <label style={styles.field}>
+                    <span style={styles.label}>新凭据值（不会回显）</span>
+                    <input
+                      type="password"
+                      style={styles.input}
+                      value={credentialDrafts[ref] ?? ''}
+                      disabled={!writable}
+                      autoComplete="new-password"
+                      onChange={event => { setCredentialDrafts(current => ({ ...current, [ref]: event.target.value })) }}
+                    />
+                  </label>
+                  <span style={styles.toolbar}>
+                    <button type="button" style={styles.button} disabled={!writable || (credentialDrafts[ref] ?? '') === ''} onClick={() => { void storeCredential(ref) }}>保存凭据</button>
+                    <button type="button" style={styles.dangerButton} disabled={!writable || info?.configured !== true} onClick={() => { void removeCredential(ref) }}>删除</button>
+                  </span>
+                </div>
+              )
+            })}
+      </article>
+
       {draft.servers.length === 0
         ? <div style={styles.empty}>尚未配置 MCP 客户端。</div>
         : draft.servers.map((server, index) => (
@@ -321,8 +560,10 @@ export function McpSettingsSection({ scope }: McpSettingsSectionProps): ReactNod
             key={`${String(index)}:${server.id}`}
             index={index}
             server={server}
+            runtime={runtimeByName.get(server.serverName)}
             disabled={disabled}
             update={next => { updateServer(index, next) }}
+            copy={() => { copyServer(index) }}
             remove={() => { change({ servers: draft.servers.filter((_, candidate) => candidate !== index) }) }}
           />
         ))}

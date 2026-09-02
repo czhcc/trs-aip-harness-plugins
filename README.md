@@ -69,17 +69,21 @@ pnpm dsh plugin --profile web add link:../trs-aip-harness-plugins/packages/mcp-s
 
 ## MCP 客户端设置
 
-安装 `@trs-aip/dsh-mcp-settings` 后，在 Web“设置”中打开“MCP 客户端”页面即可维护配置。阶段一支持：
+安装 `@trs-aip/dsh-mcp-settings` 后，在 Web“设置”中打开“MCP 客户端”页面即可维护配置。当前支持：
 
 - 添加、编辑、启用、禁用和删除多个客户端；
 - `stdio` 与 `streamable-http` 传输；
 - 参数、工作目录、URL、普通环境变量/请求头和凭据引用；
 - 工具调用超时、初始失败策略和自动重连参数；
 - revision 冲突保护和非 loopback 页面只读保护。
+- 每个实例的启动、重新启动、停止、激活失败状态，以及宿主已发现的工具数量；
+- 引用凭据的配置状态查询、只写更新和删除，凭据值不会回显；
+- 客户端复制、JSON 导入和导出（导出内容仅含凭据引用）；
+- 启用 stdio 前的明确确认，切换为 stdio 或复制客户端时默认禁用。
 
 设置文档只保存凭据引用。实际密钥仍应通过 Harness 的 Credentials 能力写入 `.credentials.yaml` 或由受支持的环境来源提供。例如页面中的 `GITHUB_TOKEN=GITHUB_TOKEN` 表示把环境变量 `GITHUB_TOKEN` 解析自同名 Harness 凭据引用，密钥值不会进入 `settings.yaml` 或浏览器状态。
 
-保存成功仅代表配置已经持久化。阶段一不提供浏览器端实时连接状态；连接、工具发现和重连结果请查看宿主日志。
+保存成功仅代表配置已经持久化。状态徽标来自插件协调器的实例生命周期和宿主工具注册表：显示“实例已激活”不等同于底层 MCP 协议连接已建立，“已发现 N 个工具”表示对应命名空间中当前可见的工具数。当前 Harness MCP Client 没有暴露协议连接/重连回调，因此更底层的连接与自动重连细节仍应结合宿主日志判断。
 
 ## 品牌图形
 
