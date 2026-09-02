@@ -8,8 +8,8 @@
     "node": "^22.19.0 || >=24.0.0"
   },
   "scripts": {
-    "build": "pnpm --filter @trs-aip/dsh-client-branding run build",
-    "typecheck": "pnpm --filter @trs-aip/dsh-client-branding run typecheck",
+    "build": "pnpm --filter @trs-aip/dsh-client-branding --filter @trs-aip/dsh-mcp-settings run build",
+    "typecheck": "pnpm --filter @trs-aip/dsh-client-branding --filter @trs-aip/dsh-mcp-settings run typecheck",
     "validate": "node scripts/validate.mjs"
   },
   "devDependencies": {
@@ -19,4 +19,3 @@
     "typescript": "^6.0.3"
   }
 }
-

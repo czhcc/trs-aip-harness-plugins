@@ -1,14 +1,15 @@
 # TRS-AIP Harness 插件
 
-本项目为 DeepSeek Harness 提供 TRS-AIP 白标客户端插件。当前插件会替换系统内置的三个品牌展示插槽，将新建对话输入框上方的标题替换为“驱动智能探索图谱”，添加由部署方维护的主题令牌覆盖层，并通过随包提供的 Bundle 补丁自动安装到 Web 配置中。
+本项目为 DeepSeek Harness 提供 TRS-AIP 扩展插件。除品牌展示和主题覆盖外，当前版本还提供宿主托管的 MCP 客户端设置页，可在运行期间动态创建、替换和停止多个 MCP 客户端。
 
 ## 包说明
 
 - `@trs-aip/dsh-client-branding`：可安装的 Bundle 和浏览器端 Client 插件，负责侧边栏品牌图标、侧边栏品牌名称、空白会话页 Hero 品牌图标与标题，以及浅色、深色主题令牌覆盖。
+- `@trs-aip/dsh-mcp-settings`：双面插件，负责注册 `trs-aip-mcp` 设置命名空间、解析凭据引用、串行协调 MCP Client 实例，并贡献独立的“MCP 客户端”设置页面。
 
 ## 开发环境
 
-插件面向 DeepSeek Harness `0.1.2-alpha.1`。由于这些预发布 Client 包可能尚未发布到当前 npm 仓库，开发依赖会链接到同级的 `../deepseek-harness` 源码目录；发布后的 peerDependencies 仍保留精确的运行时兼容版本。
+插件面向 DeepSeek Harness `0.1.2-alpha.2`。由于这些预发布包可能尚未发布到当前 npm 仓库，开发依赖会链接到同级的 `../deepseek-harness` 源码目录；发布后的 peerDependencies 仍保留精确的运行时兼容版本。
 
 目录结构应如下：
 
@@ -40,6 +41,7 @@ pnpm run build
 ```sh
 cd ../deepseek-harness
 pnpm dsh plugin --profile web add file:../trs-aip-harness-plugins/packages/client-branding
+pnpm dsh plugin --profile web add file:../trs-aip-harness-plugins/packages/mcp-settings
 pnpm dsh --profile web --dump-config
 pnpm dsh --profile web
 ```
@@ -48,6 +50,7 @@ pnpm dsh --profile web
 
 ```sh
 pnpm --dir ../deepseek-harness dsh plugin --profile web add file:../trs-aip-harness-plugins/packages/client-branding
+pnpm --dir ../deepseek-harness dsh plugin --profile web add file:../trs-aip-harness-plugins/packages/mcp-settings
 pnpm --dir ../deepseek-harness dsh --profile web --dump-config
 pnpm --dir ../deepseek-harness dsh --profile web
 ```
@@ -59,9 +62,28 @@ pnpm --dir ../deepseek-harness dsh --profile web
 ```sh
 cd ../deepseek-harness
 pnpm dsh plugin --profile web add link:../trs-aip-harness-plugins/packages/client-branding
+pnpm dsh plugin --profile web add link:../trs-aip-harness-plugins/packages/mcp-settings
 ```
 
 `link:` 会让 Web profile 中的包直接指向当前插件目录。首次安装后，修改源码只需重新执行 `pnpm run build` 并重启 Harness，不需要再次执行 `plugin add`。
+
+## MCP 客户端设置
+
+安装 `@trs-aip/dsh-mcp-settings` 后，在 Web“设置”中打开“MCP 客户端”页面即可维护配置。当前支持：
+
+- 添加、编辑、启用、禁用和删除多个客户端；
+- `stdio` 与 `streamable-http` 传输；
+- 参数、工作目录、URL、普通环境变量/请求头和凭据引用；
+- 工具调用超时、初始失败策略和自动重连参数；
+- revision 冲突保护和非 loopback 页面只读保护。
+- 每个实例的启动、重新启动、停止、激活失败状态，以及宿主已发现的工具数量；
+- 引用凭据的配置状态查询、只写更新和删除，凭据值不会回显；
+- 客户端复制、JSON 导入和导出（导出内容仅含凭据引用）；
+- 启用 stdio 前的明确确认，切换为 stdio 或复制客户端时默认禁用。
+
+设置文档只保存凭据引用。实际密钥仍应通过 Harness 的 Credentials 能力写入 `.credentials.yaml` 或由受支持的环境来源提供。例如页面中的 `GITHUB_TOKEN=GITHUB_TOKEN` 表示把环境变量 `GITHUB_TOKEN` 解析自同名 Harness 凭据引用，密钥值不会进入 `settings.yaml` 或浏览器状态。
+
+保存成功仅代表配置已经持久化。状态徽标来自插件协调器的实例生命周期和宿主工具注册表：显示“实例已激活”不等同于底层 MCP 协议连接已建立，“已发现 N 个工具”表示对应命名空间中当前可见的工具数。当前 Harness MCP Client 没有暴露协议连接/重连回调，因此更底层的连接与自动重连细节仍应结合宿主日志判断。
 
 ## 品牌图形
 

@@ -46,11 +46,11 @@
     "watch": "tsdown --watch"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "4.0.1",
-    "@deepseek-ai/dsh-client-ui-conversation": "0.1.2-alpha.1",
-    "@deepseek-ai/dsh-client-ui-renderer": "0.1.2-alpha.1",
-    "@deepseek-ai/dsh-client-ui-sidebar": "0.1.2-alpha.1",
-    "@deepseek-ai/dsh-client-ui-theme": "0.1.2-alpha.1"
+    "@deepseek-ai/cordis": "4.0.2",
+    "@deepseek-ai/dsh-client-ui-conversation": "0.1.2-alpha.2",
+    "@deepseek-ai/dsh-client-ui-renderer": "0.1.2-alpha.2",
+    "@deepseek-ai/dsh-client-ui-sidebar": "0.1.2-alpha.2",
+    "@deepseek-ai/dsh-client-ui-theme": "0.1.2-alpha.2"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "link:../../../deepseek-harness/vendor/cordis",
@@ -64,4 +64,3 @@
     "typescript": "^6.0.3"
   }
 }
-
