@@ -1,0 +1,14 @@
+{
+  "id": "china-police",
+  "name": "中国警察",
+  "nameEn": "CHINA POLICE",
+  "tagline": "警蓝守护 · 清朗智能工作台",
+  "accent": "#1554A3",
+  "bodyAttr": "data-dsh-china-police",
+  "package": "@trs-aip/dsh-skin-china-police",
+  "wiring": {
+    "id": "trs-aip-skin-china-police",
+    "bundleWired": false
+  },
+  "order": 10
+}

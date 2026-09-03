@@ -19,6 +19,15 @@ const mcpClient = await readText('packages/mcp-settings/src/client/index.ts')
 const mcpSection = await readText('packages/mcp-settings/src/client/McpSettingsSection.tsx')
 const mcpStatus = await readText('packages/mcp-settings/src/status.ts')
 const mcpStatusRemote = await readText('packages/mcp-settings/src/status-remote.ts')
+const themeManager = await readJson('packages/theme-manager/package.json')
+const themeManagerPatch = await readText('packages/theme-manager/cordis.patch.yml')
+const themeManagerHost = await readText('packages/theme-manager/src/index.ts')
+const themeManagerClient = await readText('packages/theme-manager/src/client/ThemeManager.tsx')
+const policeTheme = await readJson('packages/skin-china-police/package.json')
+const policeManifest = await readJson('packages/skin-china-police/skin.json')
+const policePatch = await readText('packages/skin-china-police/cordis.patch.yml')
+const policeClient = await readText('packages/skin-china-police/src/client/index.ts')
+const policeStyles = await readText('packages/skin-china-police/src/client/styles.ts')
 
 const failures = []
 const check = (condition, message) => {
@@ -104,9 +113,32 @@ for (const capability of [
   check(mcpSection.includes(capability), `MCP 设置页面缺少能力：${capability}`)
 }
 
+check(themeManager.name === '@trs-aip/dsh-theme-manager', '主题管理器包名不正确')
+check(themeManager.exports?.['./client']?.default === './lib/client.js', '主题管理器 Client 导出必须指向 lib/client.js')
+check(themeManager.dsh?.client?.inject?.includes('@deepseek-ai/dsh-client-ui-settings'), '主题管理器必须注入设置页模块')
+check(/name:\s*['"]?@trs-aip\/dsh-theme-manager['"]?/.test(themeManagerPatch), 'Bundle 必须插入主题管理器')
+check(themeManagerHost.includes('discoverInstalledThemes'), '主题管理器必须通过 skin.json 发现主题')
+check(themeManagerHost.includes("target !== 'official'"), '主题管理器必须支持恢复原版主题')
+check(themeManagerHost.includes('hasLegacyBrandOverrides'), '主题管理器必须迁移早期版本遗留的品牌覆盖行')
+check(!themeManagerHost.includes('const TRS_BRAND_ID') && !themeManagerHost.includes('const OFFICIAL_BRAND_ID'), '主题管理器不得接管品牌插件状态')
+check(!themeManagerHost.includes('GitHub') && !themeManagerHost.includes('version'), '主题管理器不得包含版本或远端更新检查')
+check(themeManagerClient.includes('DeepSeek Harness 原版'), '主题设置页必须提供原版主题选项')
+check(themeManagerClient.includes('保留当前品牌与 Logo 插件'), '原版主题说明必须明确保留独立品牌插件')
+
+check(policeTheme.name === '@trs-aip/dsh-skin-china-police', '中国警察主题包名不正确')
+check(policeTheme.exports?.['./skin.json'] === './skin.json', '中国警察主题必须导出 skin.json')
+check(policeManifest.id === 'china-police', '中国警察主题 id 不正确')
+check(policeManifest.bodyAttr === 'data-dsh-china-police', '中国警察主题 body 属性不正确')
+check(policeManifest.wiring?.id === 'trs-aip-skin-china-police', '中国警察主题 wiring id 不正确')
+check(/name:\s*['"]?@trs-aip\/dsh-skin-china-police['"]?/.test(policePatch), 'Bundle 必须插入中国警察主题')
+check(policeClient.includes('china-police-light.png?inline'), '中国警察主题必须内嵌浅色背景素材')
+check(policeClient.includes('china-police-dark.png?inline'), '中国警察主题必须内嵌深色背景素材')
+check(policeClient.includes('data-china-police-owner'), '中国警察主题必须按实例回收 DOM')
+check(policeStyles.includes('body[data-dsh-china-police][data-ds-dark-theme]'), '中国警察主题必须适配深色模式')
+
 if (failures.length > 0) {
   console.error(`校验失败：\n- ${failures.join('\n- ')}`)
   process.exitCode = 1
 } else {
-  console.log('校验通过：品牌插件 + MCP 阶段二状态 Remote、凭据控件、配置导入导出和 stdio 安全确认')
+  console.log('校验通过：品牌插件、MCP 设置、主题管理器与中国警察主题')
 }

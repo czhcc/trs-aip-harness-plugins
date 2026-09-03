@@ -1,11 +1,13 @@
 # TRS-AIP Harness 插件
 
-本项目为 DeepSeek Harness 提供 TRS-AIP 扩展插件。除品牌展示和主题覆盖外，当前版本还提供宿主托管的 MCP 客户端设置页，可在运行期间动态创建、替换和停止多个 MCP 客户端。
+本项目为 DeepSeek Harness 提供 TRS-AIP 扩展插件。除品牌展示与 MCP 客户端设置外，当前版本还提供可发现多个主题、互斥切换并恢复 Harness 原版界面的主题管理能力。
 
 ## 包说明
 
 - `@trs-aip/dsh-client-branding`：可安装的 Bundle 和浏览器端 Client 插件，负责侧边栏品牌图标、侧边栏品牌名称、空白会话页 Hero 品牌图标与标题，以及浅色、深色主题令牌覆盖。
 - `@trs-aip/dsh-mcp-settings`：双面插件，负责注册 `trs-aip-mcp` 设置命名空间、解析凭据引用、串行协调 MCP Client 实例，并贡献独立的“MCP 客户端”设置页面。
+- `@trs-aip/dsh-theme-manager`：常驻的主题管理器，通过已安装包的 `skin.json` 自动发现主题，在设置页完成互斥切换，并提供“DeepSeek Harness 原版”选项。
+- `@trs-aip/dsh-skin-china-police`：首个主题包，提供“中国警察”浅色/深色配色、卡通场景背景和可完整回收的浏览器展示层。
 
 ## 开发环境
 
@@ -42,6 +44,8 @@ pnpm run build
 cd ../deepseek-harness
 pnpm dsh plugin --profile web add file:../trs-aip-harness-plugins/packages/client-branding
 pnpm dsh plugin --profile web add file:../trs-aip-harness-plugins/packages/mcp-settings
+pnpm dsh plugin --profile web add file:../trs-aip-harness-plugins/packages/theme-manager
+pnpm dsh plugin --profile web add file:../trs-aip-harness-plugins/packages/skin-china-police
 pnpm dsh --profile web --dump-config
 pnpm dsh --profile web
 ```
@@ -51,6 +55,8 @@ pnpm dsh --profile web
 ```sh
 pnpm --dir ../deepseek-harness dsh plugin --profile web add file:../trs-aip-harness-plugins/packages/client-branding
 pnpm --dir ../deepseek-harness dsh plugin --profile web add file:../trs-aip-harness-plugins/packages/mcp-settings
+pnpm --dir ../deepseek-harness dsh plugin --profile web add file:../trs-aip-harness-plugins/packages/theme-manager
+pnpm --dir ../deepseek-harness dsh plugin --profile web add file:../trs-aip-harness-plugins/packages/skin-china-police
 pnpm --dir ../deepseek-harness dsh --profile web --dump-config
 pnpm --dir ../deepseek-harness dsh --profile web
 ```
@@ -63,9 +69,19 @@ pnpm --dir ../deepseek-harness dsh --profile web
 cd ../deepseek-harness
 pnpm dsh plugin --profile web add link:../trs-aip-harness-plugins/packages/client-branding
 pnpm dsh plugin --profile web add link:../trs-aip-harness-plugins/packages/mcp-settings
+pnpm dsh plugin --profile web add link:../trs-aip-harness-plugins/packages/theme-manager
+pnpm dsh plugin --profile web add link:../trs-aip-harness-plugins/packages/skin-china-police
 ```
 
 `link:` 会让 Web profile 中的包直接指向当前插件目录。首次安装后，修改源码只需重新执行 `pnpm run build` 并重启 Harness，不需要再次执行 `plugin add`。
+
+## 风格主题
+
+同时安装主题管理器与主题包后，在 Web“设置”中打开“风格主题”即可切换。当前提供“中国警察”和“DeepSeek Harness 原版”两个选项；原版选项只停用扩展主题，不会改变 `client-branding` 等独立品牌与 Logo 插件的启停状态。
+
+主题管理器不硬编码“中国警察”：后续主题只需作为独立包导出合法 `skin.json`，即可出现在同一设置页。管理器只负责本地发现和切换，不包含版本识别、远端请求或更新检查。
+
+“中国警察”背景素材位于 `packages/skin-china-police/assets/`，由 `docs/参考图/` 中的卡通民警图片作为配色与风格参考生成；构建时以内嵌资源打入浏览器 bundle，不依赖外部静态服务器。
 
 ## MCP 客户端设置
 

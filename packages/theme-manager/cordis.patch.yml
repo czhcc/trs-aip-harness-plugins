@@ -1,0 +1,4 @@
+# 常驻主题管理器。主题包通过各自的 skin.json 被自动发现。
+- insert:
+    - id: trs-aip-theme-manager
+      name: '@trs-aip/dsh-theme-manager'
