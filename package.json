@@ -8,8 +8,8 @@
     "node": "^22.19.0 || >=24.0.0"
   },
   "scripts": {
-    "build": "pnpm --filter @trs-aip/dsh-client-branding --filter @trs-aip/dsh-mcp-settings run build",
-    "typecheck": "pnpm --filter @trs-aip/dsh-client-branding --filter @trs-aip/dsh-mcp-settings run typecheck",
+    "build": "pnpm --filter @trs-aip/dsh-client-branding --filter @trs-aip/dsh-mcp-settings --filter @trs-aip/dsh-theme-manager --filter @trs-aip/dsh-skin-china-police run build",
+    "typecheck": "pnpm --filter @trs-aip/dsh-client-branding --filter @trs-aip/dsh-mcp-settings --filter @trs-aip/dsh-theme-manager --filter @trs-aip/dsh-skin-china-police run typecheck",
     "validate": "node scripts/validate.mjs"
   },
   "devDependencies": {

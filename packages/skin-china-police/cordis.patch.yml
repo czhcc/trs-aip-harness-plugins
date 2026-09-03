@@ -1,0 +1,4 @@
+# 中国警察主题。与其他主题的互斥状态由 @trs-aip/dsh-theme-manager 管理。
+- insert:
+    - id: trs-aip-skin-china-police
+      name: '@trs-aip/dsh-skin-china-police'
