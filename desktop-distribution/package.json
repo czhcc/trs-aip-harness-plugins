@@ -1,0 +1,76 @@
+{
+  "name": "@trs-aip/desktop-distribution",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Unsigned Windows x64 desktop distribution for TRS AIP and DeepSeek Harness",
+  "type": "module",
+  "main": "lib/main.mjs",
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "scripts": {
+    "sync-runtime": "node scripts/sync-dsh-runtime.mjs",
+    "pack-plugins": "node scripts/pack-trs-plugins.mjs",
+    "prepare-runtime": "node scripts/prepare-runtime.mjs",
+    "build": "node scripts/build.mjs",
+    "check": "node scripts/check.mjs",
+    "dist:win": "node scripts/package-win.mjs nsis zip",
+    "dist:win-portable": "node scripts/package-win.mjs zip"
+  },
+  "build": {
+    "appId": "com.trs.aip.desktop",
+    "productName": "TRS AIP Desktop",
+    "copyright": "Copyright (c) TRS",
+    "electronVersion": "43.3.0",
+    "asar": true,
+    "asarUnpack": [
+      "runtime/**"
+    ],
+    "npmRebuild": false,
+    "electronFuses": {
+      "runAsNode": true
+    },
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "extraResources": [
+      {
+        "from": "build/app-icon.png",
+        "to": "app-icon.png"
+      }
+    ],
+    "files": [
+      "build/app-icon.png",
+      "lib/**",
+      "resources/**",
+      "runtime/**",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/app-icon.png",
+      "artifactName": "TRS-AIP-Desktop-${version}-${arch}-Portable.${ext}"
+    },
+    "nsis": {
+      "include": "installer.nsh",
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "differentialPackage": false,
+      "shortcutName": "TRS AIP Desktop",
+      "useZip": false,
+      "artifactName": "TRS-AIP-Desktop-${version}-${arch}-Setup.${ext}"
+    }
+  }
+}

@@ -1,0 +1,8 @@
+/build/app-icon.png
+/dist/
+/lib/
+/runtime/
+/vendor/dsh-runtime/
+/vendor/trs-plugins/
+!/vendor/dsh-runtime/.gitkeep
+!/vendor/trs-plugins/.gitkeep

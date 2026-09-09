@@ -142,6 +142,14 @@ deepseek-harness/dist/npm/
 
 桌面依赖必须指向这些本地 tarball，使安装包使用当前 Harness 的确定构建结果，而不是在打包时从 npm 获取一个可能不同的版本。
 
+运行时安装不能只把 `@deepseek-ai/dsh`、`@deepseek-ai/dsh-base` 和 `@deepseek-ai/dsh-web-app` 声明为根依赖。Cordis Loader 会按照 patch 中的包名从自身所在目录动态导入插件；如果 pnpm 仅把这些包放在某个 Bundle 的嵌套 `node_modules` 中，Node.js 无法从 Loader 位置解析它们。运行时准备脚本必须从三个官方根包和四个 TRS-AIP 插件出发，递归收集本地 DSH `dependencies`、当前平台可用的 `optionalDependencies` 和非 optional 的 `peerDependencies`，并将所得闭包全部物化到运行时根级 `node_modules`。
+
+运行时 manifest 应记录根级包闭包以及因操作系统或 CPU 不匹配而排除的包。构建前校验必须确认闭包中每个包都能从根级解析、名称和版本与 manifest 一致，并再次验证闭包内不存在遗漏的必需本地依赖。
+
+闭包中的 DSH 包应直接通过 vendored `.tgz` 安装，不能把 `runtime/local-packages` 声明为 pnpm workspace 后依赖 workspace symlink 或 Windows Junction。进入 Electron Builder 前，整个 `runtime/` 必须是无符号链接、无目录联接的自包含物理文件树；否则 ASAR 在普通 Windows 用户权限下创建 unpacked 链接时会失败，并错误地要求构建机开启开发者模式。
+
+pnpm 的构建脚本白名单必须与依赖的实际来源标识一致。对于 `@deepseek-ai/dsh-subprocess-local` 这类 vendored tarball，`allowBuilds` 应使用包含 `@file:../vendor/...tgz` 的完整依赖标识，并由准备脚本根据当前 DSH 版本和 tarball 文件名动态生成；仅配置包名无法匹配 pnpm 11 的本地 tarball build identity。
+
 ## 6. 阶段三：构建并打包 TRS-AIP 插件
 
 在插件工程中执行：
@@ -232,6 +240,14 @@ Bundle 顺序应保持为：
 %USERPROFILE%\.deepseek-harness\profiles\trs-desktop\
 ```
 
+Profile 的 `dependencies` 只是依赖声明，不会让免安装版在用户目录中自动执行 `pnpm install`。桌面入口必须在每次启动时，把模板中的固定依赖从随包 `runtime/node_modules` 投影到该 Profile 的 `node_modules`。Windows 使用不要求开发者模式的目录联接（junction）；如果免安装目录被移动，则只替换旧联接并指向当前运行时。已有的用户实体目录不得被覆盖。否则 Bundle patch 虽然可以从安装锚点读取，但 patch 插入的裸包名 Cordis row 无法从 Profile 根解析，Host 和 Web Client 都不会装载对应插件。
+
+桌面入口还必须同时设置 `DSH_HOME` 和 `DSH_PROFILE=trs-desktop`。`runProfile({ profile })` 选择了启动配置，但不会替依赖插件设置 `DSH_PROFILE`；主题管理器等 Host 插件需要该环境变量定位当前 Profile 的可写 patch。缺少它时会回退到 `web` Profile，导致主题发现和切换对桌面 Profile 无效。
+
+Host 启动完成后还应读取 `ctx.clientModules.graph()`，确认品牌、MCP 设置和主题管理器这三个始终启用的 `@trs-aip` Client 模块都在浏览器启动图中；缺少任意基础模块都应让桌面启动失败并写入日志，不能以功能不完整的降级状态继续运行。中国警察皮肤属于主题管理器控制的可选 Client 模块：选择中国警察主题时应存在，选择“DeepSeek Harness 原版”时应从启动图中移除，不能将它作为无条件启动依赖。
+
+Desktop Profile 必须使用 `patchReload: startup`。Electron 主进程不是通过带 `--expose-internals` 的 Node CLI 启动，不能挂载 Cordis HMR 的 live reload 后备服务，否则应用会在启动时以 `--expose-internals is required for HMR service` 失败。主题管理器将选择结果写入 Profile 与 Home 两层 `cordis.patch.yml` 后，桌面主进程应监控这两个文件、合并短时间内的重复事件，并自动执行有序重启；新 Host generation 随后从启动阶段加载新的 Client 模块图。这样切换“DeepSeek Harness 原版”可以真正卸载皮肤，同时不向 Electron 开放 Node 内部 API。
+
 用户的设置、凭据、MCP 配置、会话和缓存都必须保存在用户目录，不得写入安装目录或 `app.asar`。
 
 ## 8. 阶段五：实现 Electron 宿主
@@ -269,7 +285,11 @@ Electron main
 - 启动失败恢复和诊断日志；
 - NSIS 覆盖安装时的有序退出。
 
-Profile 或桌面模式切换时，不应热修改存活的插件树。正确流程是：
+Windows 原生目录选择器的已构建实现通过 `process.execPath` 启动 `worker.cjs`。在 Electron 主进程中，`process.execPath` 是应用 EXE 而不是系统 `node.exe`；运行时准备阶段必须对随包 picker 的 worker `spawn` 环境应用桌面兼容补丁，只给该子进程注入 `ELECTRON_RUN_AS_NODE=1`，并保持 Electron Builder 的 `runAsNode` fuse 开启。不能把这个变量长期写进主进程环境，否则 Agent/MCP 命令也会继承它，并可能把它们启动的其他 Electron 程序误切换到 Node 模式。局部注入后，目录对话框 worker 使用安装包内的 Electron Node 运行时，不依赖用户安装 Node.js，也不会因单实例锁提前退出。
+
+目录选择器从 `IFileDialog` 取得所选路径后，还不能使用 `koffi.view()` 创建指向 COM 字符串的外部 `ArrayBuffer`。Electron 的 Node 运行时禁止这种 external buffer，确认目录后会触发 N-API fatal error，使 worker 以退出码 `134` 终止且来不及发送结果。运行时兼容补丁应改用 `koffi.decode.string16(address)`，在调用 `CoTaskMemFree` 前直接解码 NUL 结尾的 UTF-16 指针；构建前检查必须拒绝仍包含不安全读取方式的 picker worker。
+
+Profile、主题或桌面运行模式切换时，不应热修改存活的插件树。桌面主进程监控 Profile 与 Home patch，使用防抖把主题管理器的连续写入合并成一次完整重启。正确流程是：
 
 ```text
 停止 Renderer 健康监控
@@ -365,6 +385,9 @@ MCP `stdio` 命令运行在 Host 信任域。桌面化不能降低现有的显�
 - NSIS 安装程序是有效 PE 文件；
 - Profile fallback 不指向 Node 无法解析的虚拟 ASAR 路径；
 - 所有 Host 和 Client 插件依赖形成闭合运行图。
+- 运行时 manifest 中记录的每个根级包都存在于 `app.asar.unpacked/runtime/node_modules`；
+- `runtime/` 中不存在符号链接或 Windows 目录联接，构建不依赖开发者模式或管理员创建链接权限；
+- Portable ZIP 中包含完整的根级运行时依赖闭包，而不只是 `dsh/lib/bin.js`。
 
 ## 11. Windows 安装器升级行为
 
@@ -378,7 +401,160 @@ NSIS 安装器不应仅通过“安装目录中是否存在任意进程”判断
 6. 超时后提示用户，再执行限制在目标应用进程名内的强制关闭回退；
 7. 应用完全退出后才覆盖安装文件。
 
-## 12. 建议的构建脚本
+## 12. 构建机外部依赖
+
+构建环境依赖与最终用户的运行环境依赖需要分开管理。构建机需要完整的源码构建和安装包生成工具，最终安装包则应尽量携带 Electron、Node.js、DSH 和应用自身所需的运行时。
+
+### 12.1 构建机必须安装的软件
+
+| 程序或环境 | 建议版本 | 用途 |
+|---|---|---|
+| Windows x64 | Windows 10/11 x64 | Windows 安装包必须在原生 Windows x64 环境生成 |
+| Node.js x64 | 推荐 Node 24.x | 执行 Harness、插件和 Electron 构建脚本 |
+| Corepack | 与 Node.js 配套 | 管理项目固定版本的 pnpm 或 Yarn |
+| pnpm | 11.7.0 | 构建当前 Harness 和 TRS-AIP 插件 |
+| Git for Windows | 当前稳定版 | 读取 Harness Git commit、初始化子模块和生成 official Client 构建标识 |
+| PowerShell 和 cmd | Windows 自带版本 | 执行打包、验证和 NSIS 辅助脚本 |
+
+推荐在开始构建前检查：
+
+```powershell
+git --version
+node --version
+corepack --version
+corepack pnpm --version
+```
+
+建议统一使用 Node.js 24 x64。不要仅依据 `engines` 中开放的上限选择未来主版本；桌面打包脚本应显式验证经过测试的 Node.js 主版本，避免 Corepack 行为或原生依赖安装方式发生变化。
+
+### 12.2 由项目依赖提供的工具
+
+以下工具应作为 `desktop-distribution` 的开发依赖安装，一般不需要操作者单独安装为系统软件：
+
+- Electron；
+- Electron Builder；
+- TypeScript；
+- tsdown；
+- Vite；
+- React 构建工具；
+- ASAR 工具；
+- NSIS；
+- 7-Zip/app-builder 辅助程序。
+
+可以先参考现有 Desktop 工程使用的 Electron `43.3.0` 和 Electron Builder `26.15.7`，但最终版本必须根据 Harness alpha.4、目标 Windows 版本和原生模块 ABI 验证后锁定。
+
+Electron Builder 通常会自动下载 Electron、NSIS、app-builder 和相关 Windows 工具，因此通常不需要另外安装 NSIS IDE 或 7-Zip。构建脚本必须锁定版本并校验产物，不能依赖开发机上碰巧存在的全局安装。
+
+### 12.3 包管理器选择
+
+当前 Harness 和 TRS-AIP 插件均使用 pnpm `11.7.0`。如果新的 `desktop-distribution` 也统一使用 pnpm，则不需要 Yarn。
+
+只有在直接移植 `dsh-desktop` 原有 Yarn workspace 和发布脚本时，才需要额外使用 Corepack 提供的 Yarn `4.18.0`：
+
+```powershell
+corepack yarn --version
+```
+
+新的 TRS-AIP Desktop 发行层建议统一使用 pnpm，减少双包管理器、双锁文件和依赖布局差异带来的维护成本。
+
+### 12.4 网络和下载源
+
+首次安装依赖和生成安装包通常需要访问：
+
+- npm/pnpm 包仓库；
+- Electron 二进制下载源；
+- Electron Builder 使用的 NSIS、app-builder 和 winCodeSign 下载源；
+- Git 仓库或子模块源；
+- 需要重建原生模块时使用的 Electron native headers；
+- 正式签名时使用的时间戳服务器。
+
+企业网络环境需要提前确认代理、HTTPS 证书和相关下载站点可以访问。下载超时、TLS 中间证书不受信任或 GitHub 资源被拦截，都可能表现为依赖安装或 Electron Builder 打包失败。
+
+如果要求完全离线构建，需要提前缓存或纳入内部制品库：
+
+```text
+Node.js 安装介质
+pnpm/Corepack 所需文件
+全部 JavaScript 依赖包
+Electron Windows x64 二进制
+Electron Builder 工具
+NSIS 工具集
+全部 DSH tarball
+全部 TRS-AIP 插件 tarball
+Windows x64 原生模块预编译文件
+```
+
+离线构建还应禁止依赖解析退回公共网络，并验证清空普通网络访问后仍能从缓存或内部制品库完成完整构建。
+
+### 12.5 原生模块与 C++ 工具链
+
+Harness 运行时包含或可能传递依赖以下原生、预编译或平台相关组件：
+
+- `node-pty`；
+- `sharp`；
+- `koffi`；
+- `@vscode/ripgrep`；
+- Windows ACL/native process 组件。
+
+如果所有组件都提供与 Windows x64、Node/Electron ABI 匹配的预编译文件，就不需要在普通打包机上安装 C++ 编译环境。推荐的发布流程应关闭 Electron Builder 的自动 native rebuild，并在打包前验证所需预编译文件是否完整，例如：
+
+```text
+--config.npmRebuild=false
+```
+
+这意味着发布流程不能在缺少预编译文件时静默退回本机编译，而应明确失败并报告缺失的包、平台、架构和 ABI。
+
+只有在某个原生模块确实没有匹配的预编译产物、并且发行策略允许源码编译时，才需要额外安装：
+
+- Visual Studio 2022 Build Tools；
+- “使用 C++ 的桌面开发”工作负载；
+- Windows 10/11 SDK；
+- MSVC v143；
+- Python 3，供 `node-gyp` 使用。
+
+生产发行更适合固定并校验预编译二进制，以避免安装包结果依赖某台开发机的 MSVC、Windows SDK 或 Python 环境。
+
+### 12.6 Authenticode 正式签名
+
+生成未签名的 `Setup.exe` 不需要证书。正式发布还需要：
+
+- 有效的 Authenticode 代码签名证书；
+- PFX 文件与密码，或硬件令牌/云签名服务；
+- Windows 签名工具或 Electron Builder 支持的签名服务；
+- 可访问的可信时间戳服务器；
+- 受控的密钥和发布凭据注入机制。
+
+签名密钥、密码和服务 Token 不得写入仓库、普通配置文件、构建日志或生成的诊断包。未签名安装包仍可以生成和安装，但 Windows SmartScreen 可能显示“未知发布者”。
+
+### 12.7 不属于基础构建依赖的软件
+
+当前基础桌面发行方案不要求安装以下程序：
+
+- Docker；
+- Java/JDK；
+- .NET SDK；
+- Rust；
+- Go；
+- 独立安装的 NSIS IDE；
+- 独立安装的 7-Zip。
+
+只有后续新增的插件、MCP 服务或 native component 明确使用这些工具时，才应将其加入对应功能的依赖说明，不能把它们默认视为 Desktop 构建前提。
+
+### 12.8 最终用户的条件性外部依赖
+
+正常安装后的 TRS-AIP Desktop 应自带 Electron、Node.js、pnpm、DSH Host、Web UI 和预装插件。普通用户不需要安装构建机上的 Git、Visual Studio、Python 或 Electron Builder。
+
+但用户配置的扩展功能仍可能调用外部程序：
+
+- `stdio` MCP 的命令是 `python` 时，需要目标机器安装 Python；
+- MCP 命令使用系统 `npx` 时，需要 Node.js/npm，除非桌面端明确提供受控的内置 Node/npm 入口；
+- MCP 命令调用容器时，需要 Docker Desktop 或相应容器运行时；
+- 调用 Codex、Claude Code 等外部 CLI 时，需要安装对应 CLI；
+- 调用云模型或 HTTP MCP 时，需要网络连接和相应凭据。
+
+因此，应用只能承诺内置组件免安装，不能承诺用户填写的任意 MCP `command` 都随安装包提供。需要做到完全免外部依赖的 MCP 服务，必须作为受审计的运行时资源随 Desktop 一起打包，并通过受控路径调用。
+
+## 13. 建议的构建脚本
 
 桌面发行层完成后，插件仓库根目录应提供统一命令：
 
@@ -423,7 +599,7 @@ corepack pnpm run dist:win
 - `dist:win` 生成 NSIS 安装程序；
 - `dist:win-portable` 生成免安装 ZIP。
 
-## 13. 预期产物
+## 14. 预期产物
 
 当前版本号假设为 `0.1.0`，预期输出为：
 
@@ -439,12 +615,14 @@ trs-aip-harness-plugins/desktop-distribution/dist/
 
 默认构建可以生成未签名安装包，但正式发布必须增加独立的 Authenticode 签名步骤，否则 Windows SmartScreen 可能显示“未知发布者”。签名密钥不应写入仓库或普通构建配置，应由受控发布环境注入。
 
-## 14. 验收清单
+## 15. 验收清单
 
 ### 版本与依赖
 
 - DSH Host、Web Client 和所有 DSH 包来自同一 Harness commit、同一版本和同一次 official 构建；
 - 四个 TRS-AIP 插件的 peerDependencies 与打包运行时一致；
+- Cordis Loader 动态加载的所有 Host 和 Client 包都可从运行时根级 `node_modules` 解析；
+- Desktop Profile 的固定依赖通过可自愈目录联接解析到当前随包运行时，移动免安装目录后不会保留旧绝对路径；
 - 安装包不依赖开发机的 workspace symlink；
 - 安装包不从开发机绝对路径加载模块。
 
@@ -456,6 +634,7 @@ trs-aip-harness-plugins/desktop-distribution/dist/
 - 主题管理器可以发现中国警察主题；
 - 可以恢复 DeepSeek Harness 原版主题；
 - Host 和 Client Loader 均没有未激活条目。
+- `ctx.clientModules.graph()` 始终包含品牌、MCP 设置和主题管理器三个基础 Client 模块；中国警察皮肤是否存在与当前主题选择一致。
 
 ### 桌面生命周期
 
@@ -464,7 +643,9 @@ trs-aip-harness-plugins/desktop-distribution/dist/
 - WebServer 只监听预期地址；
 - BrowserWindow 能完成认证，认证信息不会泄漏到外部 origin；
 - Renderer 加载失败进入恢复或诊断流程；
-- 应用重启不会残留 Host 或 MCP 子进程。
+- 应用重启不会残留 Host 或 MCP 子进程；
+- Windows “选择工作区”可以启动随包 Node 模式的原生目录对话框 worker，不创建 Electron 禁止的 external buffer，并正确处理选择和取消；
+- 主题切换后桌面自动有序重启并重组 Client 图，“中国警察”和“DeepSeek Harness 原版”可以互相切换。
 
 ### 安装包
 
@@ -477,7 +658,7 @@ trs-aip-harness-plugins/desktop-distribution/dist/
 - 未安装 Node.js 的干净 Windows x64 环境可以启动；
 - 最终签名版本通过 Authenticode 验证。
 
-## 15. 最终结论
+## 16. 最终结论
 
 从当前工程生成 EXE 安装包，需要先在 `trs-aip-harness-plugins/` 内建设 Desktop 发行层。核心工作不是单纯调用 Electron Builder，而是同时解决：
 
