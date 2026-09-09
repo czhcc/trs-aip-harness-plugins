@@ -1,0 +1,25 @@
+{
+  "name": "@trs-aip/desktop-profile",
+  "private": true,
+  "dependencies": {
+    "@deepseek-ai/dsh-base": "__DSH_VERSION__",
+    "@deepseek-ai/dsh-web-app": "__DSH_VERSION__",
+    "@trs-aip/dsh-client-branding": "__BRANDING_VERSION__",
+    "@trs-aip/dsh-mcp-settings": "__MCP_VERSION__",
+    "@trs-aip/dsh-theme-manager": "__THEME_VERSION__",
+    "@trs-aip/dsh-skin-china-police": "__SKIN_VERSION__"
+  },
+  "dsh": {
+    "profile": {
+      "patchReload": "startup",
+      "bundles": [
+        "@deepseek-ai/dsh-base",
+        "@deepseek-ai/dsh-web-app",
+        "@trs-aip/dsh-client-branding",
+        "@trs-aip/dsh-mcp-settings",
+        "@trs-aip/dsh-theme-manager",
+        "@trs-aip/dsh-skin-china-police"
+      ]
+    }
+  }
+}

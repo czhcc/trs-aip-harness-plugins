@@ -11,7 +11,7 @@
 
 ## 开发环境
 
-插件面向 DeepSeek Harness `0.1.2-alpha.2`。由于这些预发布包可能尚未发布到当前 npm 仓库，开发依赖会链接到同级的 `../deepseek-harness` 源码目录；发布后的 peerDependencies 仍保留精确的运行时兼容版本。
+插件面向 DeepSeek Harness `0.1.2-rc.1`。由于这些预发布包可能尚未发布到当前 npm 仓库，开发依赖会链接到同级的 `../deepseek-harness` 源码目录；发布后的 peerDependencies 仍保留精确的运行时兼容版本。
 
 目录结构应如下：
 
@@ -29,6 +29,32 @@ pnpm run validate
 pnpm run typecheck
 pnpm run build
 ```
+
+## Windows 桌面安装包
+
+`desktop-distribution/` 提供独立的 Electron 桌面发行层。它会固定当前同级
+`deepseek-harness/` 的完整 DSH tarball 集，打包四个 TRS-AIP 插件，在用户目录
+`%USERPROFILE%\.deepseek-harness\profiles\trs-desktop` 初始化专用 Profile，并生成未签名的
+Windows x64 安装程序和免安装 ZIP：
+
+```powershell
+corepack pnpm run dist:win
+```
+
+预期产物：
+
+```text
+desktop-distribution/dist/
+├─ TRS-AIP-Desktop-0.1.0-x64-Setup.exe
+├─ TRS-AIP-Desktop-0.1.0-x64-Portable.zip
+└─ win-unpacked/TRS AIP Desktop.exe
+```
+
+该命令要求 Windows x64、Node.js 22.19+ 或 24.x，以及当前 Harness 已存在完整的
+official Web 构建产物。若 `deepseek-harness/dist/npm` 尚无 tarball，脚本会从当前已构建的
+Harness 创建 tarball，并且只把结果写入插件工程。也可以通过 `DSH_TARBALL_SOURCE` 指向
+已经生成的 `publish-order.txt` 和 tarball 目录。普通用户运行安装后的程序不需要另行安装
+Node.js、pnpm 或 DSH。当前构建明确禁用 Authenticode 自动发现，因此不会读取或使用签名证书。
 
 ## 安装到本地 Web 配置
 

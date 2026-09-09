@@ -21,6 +21,8 @@ importers:
         specifier: ^6.0.3
         version: 6.0.3
 
+  desktop-distribution: {}
+
   packages/client-branding:
     devDependencies:
       '@deepseek-ai/cordis':
