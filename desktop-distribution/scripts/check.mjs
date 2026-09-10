@@ -56,6 +56,9 @@ for (const marker of [
   'createStartupWindow',
   "appResource('resources', 'splash.html')",
   'destroyStartupWindow',
+  "window.once('ready-to-show'",
+  'STARTUP_WINDOW_READY_TIMEOUT_MS',
+  'setImmediate(resolve)',
   "window.on('page-title-updated'",
 ]) {
   if (!desktopMain.includes(marker)) throw new Error(`desktop main entry lost startup-window lifecycle marker ${marker}`)

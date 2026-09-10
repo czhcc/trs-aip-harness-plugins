@@ -296,7 +296,7 @@ Windows 原生目录选择器的已构建实现通过 `process.execPath` 启动 
 
 目录选择器从 `IFileDialog` 取得所选路径后，还不能使用 `koffi.view()` 创建指向 COM 字符串的外部 `ArrayBuffer`。Electron 的 Node 运行时禁止这种 external buffer，确认目录后会触发 N-API fatal error，使 worker 以退出码 `134` 终止且来不及发送结果。旧版运行时兼容补丁应改用 `koffi.decode.string16(address)`；新版运行时若已通过内部 `Buffer` 保存指针并调用 `koffi.decode(..., 'str16')`，则保留其原生安全实现。两种方式都必须在调用 `CoTaskMemFree` 前完成解码，构建前检查必须拒绝仍包含 `koffi.view()` 的 picker worker。
 
-启动 DSH/Cordis Host、装载插件和建立本地 Web Carrier 可能持续数秒。Electron ready 后应先创建一个独立、无框、不可调整大小的本地启动画面，再异步启动 Host。启动画面只能加载随包 HTML 和图标，底部固定显示“广州拓尔思大数据有限公司”；必须启用 `contextIsolation`、`sandbox` 和 `webSecurity`，关闭 `nodeIntegration`，不使用 preload、远程资源或脚本。正式窗口保持隐藏，完成认证、页面加载及首次渲染后再显示，并随即销毁启动画面。启动失败、安装器退出、主题重启和应用关闭都必须释放启动画面；启动期间收到第二实例或 activate 事件时，应聚焦启动画面而不是无响应。
+启动 DSH/Cordis Host、装载插件和建立本地 Web Carrier 可能持续数秒。Electron ready 后应先创建一个独立、无框、不可调整大小的本地启动画面，再异步启动 Host。启动画面只能加载随包 HTML 和图标，底部固定显示“广州拓尔思大数据有限公司”；必须启用 `contextIsolation`、`sandbox` 和 `webSecurity`，关闭 `nodeIntegration`，不使用 preload、远程资源或脚本。启动画面应在调用 `loadFile()` 前订阅 `ready-to-show`，等待首帧就绪后再显示；等待超过 2 秒时允许显示已经加载完成的页面作为兜底。调用 `show()` 后还应让出一次事件循环，使 Windows 合成器提交启动画面，再开始可能占用主线程的 Host 初始化。正式窗口保持隐藏，完成认证、页面加载及首次渲染后再显示，并随即销毁启动画面。启动失败、安装器退出、主题重启和应用关闭都必须释放启动画面；启动期间收到第二实例或 activate 事件时，应聚焦启动画面而不是无响应。
 
 Profile、主题或桌面运行模式切换时，不应热修改存活的插件树。桌面主进程监控 Profile 与 Home patch，使用防抖把主题管理器的连续写入合并成一次完整重启。正确流程是：
 

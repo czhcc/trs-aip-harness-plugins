@@ -29,6 +29,7 @@ const PRODUCT_NAME = 'TRS AIP Desktop'
 const PROFILE_NAME = 'trs-desktop'
 const INSTALLER_QUIT_FLAG = '--trs-installer-quit'
 const STARTUP_TIMEOUT_MS = 90_000
+const STARTUP_WINDOW_READY_TIMEOUT_MS = 2_000
 const PROFILE_RESTART_DELAY_MS = 500
 const AUTH_TOKEN_PATTERN = /([?&]token=)[A-Za-z0-9_-]+/gu
 const REQUIRED_CORE_CLIENT_MODULES = [
@@ -298,6 +299,20 @@ function windowIcon() {
   return icon.isEmpty() ? undefined : icon
 }
 
+function waitForStartupWindowFirstPaint(window) {
+  return new Promise(resolve => {
+    let timer
+    const finish = painted => {
+      window.removeListener('ready-to-show', onReady)
+      if (timer !== undefined) clearTimeout(timer)
+      resolve(painted)
+    }
+    const onReady = () => finish(true)
+    window.once('ready-to-show', onReady)
+    timer = setTimeout(() => finish(false), STARTUP_WINDOW_READY_TIMEOUT_MS)
+  })
+}
+
 async function createStartupWindow() {
   const window = new BrowserWindow({
     title: `${PRODUCT_NAME} 正在启动`,
@@ -328,9 +343,17 @@ async function createStartupWindow() {
   window.on('closed', () => {
     if (startupWindow === window) startupWindow = undefined
   })
+  const firstPaint = waitForStartupWindowFirstPaint(window)
   try {
     await window.loadFile(appResource('resources', 'splash.html'))
-    if (!window.isDestroyed() && !quitting) window.show()
+    const painted = await firstPaint
+    if (!painted) log('startup window first paint timed out; showing the loaded page as a fallback')
+    if (!window.isDestroyed() && !quitting) {
+      window.show()
+      // Give Electron's native window/compositor one turn before Host startup begins
+      // synchronous profile discovery and module initialization on the main thread.
+      await new Promise(resolve => setImmediate(resolve))
+    }
     return window
   } catch (cause) {
     if (!window.isDestroyed()) window.destroy()
