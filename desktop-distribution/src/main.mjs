@@ -41,6 +41,7 @@ const MANAGED_THEME_CLIENT_MODULES = [
 ]
 
 let mainWindow
+let startupWindow
 let tray
 let hostGeneration
 let quitting = false
@@ -297,6 +298,52 @@ function windowIcon() {
   return icon.isEmpty() ? undefined : icon
 }
 
+async function createStartupWindow() {
+  const window = new BrowserWindow({
+    title: `${PRODUCT_NAME} 正在启动`,
+    width: 460,
+    height: 300,
+    center: true,
+    show: false,
+    frame: false,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    closable: false,
+    autoHideMenuBar: true,
+    backgroundColor: '#f5f7fa',
+    icon: windowIcon(),
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true,
+      partition: 'trs-aip-desktop-startup',
+    },
+  })
+  window.removeMenu()
+  window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  window.webContents.on('will-navigate', event => event.preventDefault())
+  window.on('closed', () => {
+    if (startupWindow === window) startupWindow = undefined
+  })
+  try {
+    await window.loadFile(appResource('resources', 'splash.html'))
+    if (!window.isDestroyed() && !quitting) window.show()
+    return window
+  } catch (cause) {
+    if (!window.isDestroyed()) window.destroy()
+    log(`startup window failed: ${cause instanceof Error ? cause.message : String(cause)}`)
+    return undefined
+  }
+}
+
+function destroyStartupWindow() {
+  if (startupWindow !== undefined && !startupWindow.isDestroyed()) startupWindow.destroy()
+  startupWindow = undefined
+}
+
 function allowOnlyApplicationOrigin(window, origin) {
   const rejectForeignNavigation = (event, url) => {
     try {
@@ -344,12 +391,16 @@ async function createMainWindow(generation) {
     },
   })
   allowOnlyApplicationOrigin(window, origin)
+  window.on('page-title-updated', (event) => {
+    event.preventDefault()
+    window.setTitle(PRODUCT_NAME)
+  })
   window.on('close', (event) => {
     if (quitting) return
     event.preventDefault()
     window.hide()
   })
-  window.once('ready-to-show', () => window.show())
+  const readyToShow = new Promise(resolve => window.once('ready-to-show', resolve))
   window.webContents.on('render-process-gone', (_event, details) => {
     log(`renderer exited: ${details.reason}, code ${String(details.exitCode)}`)
   })
@@ -365,6 +416,7 @@ async function createMainWindow(generation) {
     }
     await authenticated.body?.cancel()
     await window.loadURL(generation.cleanUrl)
+    await withTimeout(readyToShow, 'desktop renderer first paint')
   } catch (cause) {
     window.destroy()
     throw cause
@@ -388,10 +440,13 @@ function buildTray() {
 }
 
 function showMainWindow() {
-  if (mainWindow === undefined || mainWindow.isDestroyed()) return
-  if (mainWindow.isMinimized()) mainWindow.restore()
-  mainWindow.show()
-  mainWindow.focus()
+  const window = mainWindow !== undefined && !mainWindow.isDestroyed()
+    ? mainWindow
+    : startupWindow
+  if (window === undefined || window.isDestroyed()) return
+  if (window.isMinimized()) window.restore()
+  window.show()
+  window.focus()
 }
 
 function stopProfilePatchWatchers() {
@@ -432,6 +487,7 @@ async function shutdownHost() {
     stopProfilePatchWatchers()
     tray?.destroy()
     tray = undefined
+    destroyStartupWindow()
     if (mainWindow !== undefined && !mainWindow.isDestroyed()) mainWindow.destroy()
     mainWindow = undefined
     if (hostGeneration !== undefined) {
@@ -459,10 +515,13 @@ async function restartApplication() {
 async function startApplication() {
   app.setAppUserModelId('com.trs.aip.desktop')
   await app.whenReady()
+  startupWindow = await createStartupWindow()
   hostGeneration = await bootHarness()
   watchProfilePatches(hostGeneration.profileDir)
   mainWindow = await createMainWindow(hostGeneration)
   tray = buildTray()
+  mainWindow.show()
+  destroyStartupWindow()
   log(`started ${PRODUCT_NAME} with profile ${hostGeneration.profileDir}`)
 }
 

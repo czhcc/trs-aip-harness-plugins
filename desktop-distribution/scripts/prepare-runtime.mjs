@@ -4,6 +4,7 @@ import { join, relative } from 'node:path'
 import {
   assertInside,
   desktopRoot,
+  harnessRoot,
   packageSupportsCurrentPlatform,
   readJson,
   readPackedManifest,
@@ -12,15 +13,20 @@ import {
 } from './shared.mjs'
 
 const dshVendorRoot = join(desktopRoot, 'vendor', 'dsh-runtime')
+const dshVersion = readJson(join(harnessRoot, 'package.json')).version
+if (typeof dshVersion !== 'string' || dshVersion === '') {
+  throw new Error('the local deepseek-harness package has no version')
+}
 const versions = []
 for (const entry of readdirSync(dshVendorRoot, { withFileTypes: true })) {
   if (entry.isDirectory() && !entry.name.startsWith('.')) versions.push(entry.name)
 }
-if (versions.length !== 1) {
-  throw new Error(`expected exactly one vendored DSH runtime version, found: ${versions.join(', ') || '(none)'}`)
+if (!versions.includes(dshVersion)) {
+  throw new Error(
+    `vendored DSH runtime for current Harness ${dshVersion} is missing; available: ${versions.join(', ') || '(none)'}`,
+  )
 }
-const dshVersion = versions[0]
-const dshDir = join(dshVendorRoot, dshVersion)
+const dshDir = assertInside(dshVendorRoot, join(dshVendorRoot, dshVersion), 'current DSH runtime directory')
 const dshManifest = readJson(join(dshDir, 'manifest.json'))
 const trsManifest = readJson(join(desktopRoot, 'vendor', 'trs-plugins', 'manifest.json'))
 if (dshManifest.version !== dshVersion) throw new Error('DSH vendor directory and manifest version differ')
@@ -223,15 +229,22 @@ const pickerWorkerPath = join(
   runtimeDir, 'node_modules', '@deepseek-ai', 'dsh-host-directory-picker-native', 'lib', 'worker.cjs',
 )
 const pickerWorkerSource = readFileSync(pickerWorkerPath, 'utf8')
-const unsafeUtf16Reader = /function readUtf16\(koffi, address\) \{\r?\n([\s\S]*?)\r?\n\}/u
-const utf16ReaderMatch = unsafeUtf16Reader.exec(pickerWorkerSource)
-if (utf16ReaderMatch === null || !utf16ReaderMatch[1].includes('koffi.view(address')) {
-  throw new Error('desktop runtime cannot locate the Electron-unsafe directory-picker UTF-16 reader')
+const utf16Reader = /function readUtf16\(([^)]*)\) \{\r?\n([\s\S]*?)\r?\n\}/u
+const utf16ReaderMatch = utf16Reader.exec(pickerWorkerSource)
+if (utf16ReaderMatch === null) {
+  throw new Error('desktop runtime cannot locate the directory-picker UTF-16 reader')
 }
-writeFileSync(pickerWorkerPath, pickerWorkerSource.replace(
-  unsafeUtf16Reader,
-  'function readUtf16(koffi, address) {\n\treturn koffi.decode.string16(address);\n}',
-), 'utf8')
+const utf16ReaderBody = utf16ReaderMatch[2]
+if (utf16ReaderBody.includes('koffi.view(address')) {
+  writeFileSync(pickerWorkerPath, pickerWorkerSource.replace(
+    utf16Reader,
+    `function readUtf16(${utf16ReaderMatch[1]}) {\n\treturn koffi.decode.string16(address);\n}`,
+  ), 'utf8')
+} else {
+  const alreadySafe = utf16ReaderBody.includes('koffi.decode.string16(address)')
+    || (/Buffer\.alloc\(/u.test(utf16ReaderBody) && /koffi\.decode\([\s\S]*?["']str16["']\)/u.test(utf16ReaderBody))
+  if (!alreadySafe) throw new Error('desktop runtime directory-picker has an unrecognized UTF-16 reader')
+}
 
 for (const requirement of rootPackages) {
   const packageDir = join(runtimeDir, 'node_modules', ...requirement.name.split('/'))
