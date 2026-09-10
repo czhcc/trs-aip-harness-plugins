@@ -42,11 +42,16 @@ function createPackSource() {
     const directory = join(harnessRoot, 'vendor', member.name)
     if (member.isDirectory() && existsSync(join(directory, 'package.json'))) memberDirs.push(directory)
   }
-  const nativePackages = join(harnessRoot, 'native', 'landlock-run', 'packages')
-  if (existsSync(nativePackages)) {
-    for (const member of readdirSync(nativePackages, { withFileTypes: true })) {
-      const directory = join(nativePackages, member.name)
-      if (member.isDirectory() && existsSync(join(directory, 'package.json'))) memberDirs.push(directory)
+  const nativeRoot = join(harnessRoot, 'native')
+  if (existsSync(nativeRoot)) {
+    for (const project of readdirSync(nativeRoot, { withFileTypes: true })) {
+      if (!project.isDirectory()) continue
+      const nativePackages = join(nativeRoot, project.name, 'packages')
+      if (!existsSync(nativePackages)) continue
+      for (const member of readdirSync(nativePackages, { withFileTypes: true })) {
+        const directory = join(nativePackages, member.name)
+        if (member.isDirectory() && existsSync(join(directory, 'package.json'))) memberDirs.push(directory)
+      }
     }
   }
 

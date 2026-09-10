@@ -140,7 +140,11 @@ deepseek-harness/dist/npm/
 6. 生成桌面发行包使用的依赖映射；
 7. 拒绝 DSH 版本混装或缺失包。
 
+同步范围必须覆盖主体工程的 `packages/`、`apps/`、`vendor/` 以及所有 `native/*/packages/`。原生工作区会随 Harness 版本增加；不能只特判某一个原生工程，否则新的跨平台入口包可能不会进入本地 tarball 闭包。
+
 桌面依赖必须指向这些本地 tarball，使安装包使用当前 Harness 的确定构建结果，而不是在打包时从 npm 获取一个可能不同的版本。
+
+`vendor/dsh-runtime/` 可以保留以前构建产生的多个版本目录。运行时准备阶段必须读取当前 `deepseek-harness/package.json` 的版本，并只选择同名的 vendored 目录；不得因为旧版本缓存仍然存在而中断构建，也不得退化为任意选择目录中的第一个版本。当前版本目录缺失时，应报告当前版本和已有候选版本。
 
 运行时安装不能只把 `@deepseek-ai/dsh`、`@deepseek-ai/dsh-base` 和 `@deepseek-ai/dsh-web-app` 声明为根依赖。Cordis Loader 会按照 patch 中的包名从自身所在目录动态导入插件；如果 pnpm 仅把这些包放在某个 Bundle 的嵌套 `node_modules` 中，Node.js 无法从 Loader 位置解析它们。运行时准备脚本必须从三个官方根包和四个 TRS-AIP 插件出发，递归收集本地 DSH `dependencies`、当前平台可用的 `optionalDependencies` 和非 optional 的 `peerDependencies`，并将所得闭包全部物化到运行时根级 `node_modules`。
 
@@ -256,18 +260,21 @@ Desktop Profile 必须使用 `patchReload: startup`。Electron 主进程不是�
 
 ```text
 Electron main
+  -> Electron ready 后立即显示本地独立启动画面
   -> 读取或创建 trs-desktop Profile
   -> 组合官方 Bundle、TRS-AIP Bundle 和用户 patch
   -> 在 main 进程启动 DSH/Cordis Host
   -> WebServer 监听 127.0.0.1
   -> 使用 DSH Connection 完成 BrowserWindow 认证
-  -> BrowserWindow.loadURL(localUrl)
+  -> 正式 BrowserWindow.loadURL(localUrl) 并完成首次渲染
+  -> 显示正式窗口并销毁启动画面
   -> 管理窗口、托盘、重启、退出和子进程
 ```
 
 至少需要实现以下能力：
 
 - Electron 主入口；
+- 独立启动画面及其失败、退出和重启生命周期；
 - 单实例锁；
 - DSH Home 和 Profile 选择；
 - TRS-AIP Desktop Profile 初始化；
@@ -287,7 +294,9 @@ Electron main
 
 Windows 原生目录选择器的已构建实现通过 `process.execPath` 启动 `worker.cjs`。在 Electron 主进程中，`process.execPath` 是应用 EXE 而不是系统 `node.exe`；运行时准备阶段必须对随包 picker 的 worker `spawn` 环境应用桌面兼容补丁，只给该子进程注入 `ELECTRON_RUN_AS_NODE=1`，并保持 Electron Builder 的 `runAsNode` fuse 开启。不能把这个变量长期写进主进程环境，否则 Agent/MCP 命令也会继承它，并可能把它们启动的其他 Electron 程序误切换到 Node 模式。局部注入后，目录对话框 worker 使用安装包内的 Electron Node 运行时，不依赖用户安装 Node.js，也不会因单实例锁提前退出。
 
-目录选择器从 `IFileDialog` 取得所选路径后，还不能使用 `koffi.view()` 创建指向 COM 字符串的外部 `ArrayBuffer`。Electron 的 Node 运行时禁止这种 external buffer，确认目录后会触发 N-API fatal error，使 worker 以退出码 `134` 终止且来不及发送结果。运行时兼容补丁应改用 `koffi.decode.string16(address)`，在调用 `CoTaskMemFree` 前直接解码 NUL 结尾的 UTF-16 指针；构建前检查必须拒绝仍包含不安全读取方式的 picker worker。
+目录选择器从 `IFileDialog` 取得所选路径后，还不能使用 `koffi.view()` 创建指向 COM 字符串的外部 `ArrayBuffer`。Electron 的 Node 运行时禁止这种 external buffer，确认目录后会触发 N-API fatal error，使 worker 以退出码 `134` 终止且来不及发送结果。旧版运行时兼容补丁应改用 `koffi.decode.string16(address)`；新版运行时若已通过内部 `Buffer` 保存指针并调用 `koffi.decode(..., 'str16')`，则保留其原生安全实现。两种方式都必须在调用 `CoTaskMemFree` 前完成解码，构建前检查必须拒绝仍包含 `koffi.view()` 的 picker worker。
+
+启动 DSH/Cordis Host、装载插件和建立本地 Web Carrier 可能持续数秒。Electron ready 后应先创建一个独立、无框、不可调整大小的本地启动画面，再异步启动 Host。启动画面只能加载随包 HTML 和图标，底部固定显示“广州拓尔思大数据有限公司”；必须启用 `contextIsolation`、`sandbox` 和 `webSecurity`，关闭 `nodeIntegration`，不使用 preload、远程资源或脚本。正式窗口保持隐藏，完成认证、页面加载及首次渲染后再显示，并随即销毁启动画面。启动失败、安装器退出、主题重启和应用关闭都必须释放启动画面；启动期间收到第二实例或 activate 事件时，应聚焦启动画面而不是无响应。
 
 Profile、主题或桌面运行模式切换时，不应热修改存活的插件树。桌面主进程监控 Profile 与 Home patch，使用防抖把主题管理器的连续写入合并成一次完整重启。正确流程是：
 
@@ -639,6 +648,7 @@ trs-aip-harness-plugins/desktop-distribution/dist/
 ### 桌面生命周期
 
 - 应用只能运行一个主实例；
+- Electron ready 后显示独立启动画面，正式窗口首次渲染完成后无空白切换并释放启动画面；
 - 窗口关闭、托盘退出和安装器退出都能有序释放 Host；
 - WebServer 只监听预期地址；
 - BrowserWindow 能完成认证，认证信息不会泄漏到外部 origin；

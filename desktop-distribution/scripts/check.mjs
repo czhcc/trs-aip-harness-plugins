@@ -23,6 +23,7 @@ for (const path of [
   join(desktopRoot, 'lib', 'preload.mjs'),
   join(desktopRoot, 'build', 'app-icon.png'),
   join(desktopRoot, 'build', 'installer.nsh'),
+  join(desktopRoot, 'resources', 'splash.html'),
   join(desktopRoot, 'runtime', 'runtime-manifest.json'),
   join(desktopRoot, 'runtime', 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js'),
   join(desktopRoot, 'runtime', 'node_modules', '@deepseek-ai', 'dsh-host-directory-picker-native', 'lib', 'worker.cjs'),
@@ -42,10 +43,30 @@ if (!/ELECTRON_RUN_AS_NODE:\s*["']1["']/u.test(pickerHost)) {
 const pickerWorker = readFileSync(join(
   desktopRoot, 'runtime', 'node_modules', '@deepseek-ai', 'dsh-host-directory-picker-native', 'lib', 'worker.cjs',
 ), 'utf8')
-if (!/koffi\.decode\.string16\(address\)/u.test(pickerWorker) || /koffi\.view\(address/u.test(pickerWorker)) {
+const utf16ReaderBody = /function readUtf16\([^)]*\) \{\r?\n([\s\S]*?)\r?\n\}/u.exec(pickerWorker)?.[1]
+const safeUtf16Reader = utf16ReaderBody !== undefined
+  && !/koffi\.view\(address/u.test(utf16ReaderBody)
+  && (/koffi\.decode\.string16\(address\)/u.test(utf16ReaderBody)
+    || (/Buffer\.alloc\(/u.test(utf16ReaderBody) && /koffi\.decode\([\s\S]*?["']str16["']\)/u.test(utf16ReaderBody)))
+if (!safeUtf16Reader) {
   throw new Error('desktop runtime picker worker must decode its COM string without an Electron external buffer')
 }
 const desktopMain = readFileSync(join(desktopRoot, 'lib', 'main.mjs'), 'utf8')
+for (const marker of [
+  'createStartupWindow',
+  "appResource('resources', 'splash.html')",
+  'destroyStartupWindow',
+  "window.on('page-title-updated'",
+]) {
+  if (!desktopMain.includes(marker)) throw new Error(`desktop main entry lost startup-window lifecycle marker ${marker}`)
+}
+const splash = readFileSync(join(desktopRoot, 'resources', 'splash.html'), 'utf8')
+if (!/Content-Security-Policy/u.test(splash) || /<script(?:\s|>)/iu.test(splash)) {
+  throw new Error('desktop startup page must have a Content Security Policy and no scripts')
+}
+if (!splash.includes('广州拓尔思大数据有限公司')) {
+  throw new Error('desktop startup page must identify Guangzhou TRS Big Data Co., Ltd.')
+}
 const requiredCoreModules = /const REQUIRED_CORE_CLIENT_MODULES\s*=\s*\[([\s\S]*?)\]/u.exec(desktopMain)?.[1]
 const managedThemeModules = /const MANAGED_THEME_CLIENT_MODULES\s*=\s*\[([\s\S]*?)\]/u.exec(desktopMain)?.[1]
 if (requiredCoreModules === undefined || requiredCoreModules.includes('@trs-aip/dsh-skin-china-police')) {
