@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 
 import type { ChangeEvent, CSSProperties, ReactNode } from 'react'
 import type { CredentialInfo } from '@deepseek-ai/dsh-api-remotes/client'
 import type {
-  SettingsScope,
+  ConfigForm,
   SettingsSectionOwnerProps,
 } from '@deepseek-ai/dsh-client-ui-settings/client'
 import {
@@ -23,7 +23,7 @@ export interface McpSettingsOperations {
 }
 
 interface McpSettingsSectionProps extends SettingsSectionOwnerProps {
-  scope: SettingsScope<McpSettings>
+  scope: ConfigForm<McpSettings>
   operations: McpSettingsOperations
 }
 

@@ -15,7 +15,7 @@ import { McpSettingsSection, type McpSettingsOperations } from './McpSettingsSec
 export const inject = ['remote']
 
 function registerMcpSettingsUi(ctx: ClientContext): void {
-  const scope = ctx.settingsScope.bind<McpSettings>({ namespace: MCP_SETTINGS_NAMESPACE })
+  const scope = ctx.configForms.get<McpSettings>(MCP_SETTINGS_NAMESPACE)
   const operations: McpSettingsOperations = {
     loadStatus: async (): Promise<McpRuntimeSnapshot | undefined> => {
       const response = await ctx.remote.trsAipMcp.snapshot()
@@ -54,7 +54,7 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
   const disposeRemote = await ctx.remote.$mount(MCP_STATUS_REMOTE)
   const ui = ctx.inject([
     'slots',
-    'settingsScope',
+    'configForms',
     'remote.credentials',
     'remote.trsAipMcp',
   ], registerMcpSettingsUi)

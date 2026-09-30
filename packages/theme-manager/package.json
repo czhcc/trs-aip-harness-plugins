@@ -1,7 +1,7 @@
 {
   "name": "@trs-aip/dsh-theme-manager",
   "description": "Settings-integrated discovery and switching for DSH visual themes",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
@@ -38,13 +38,13 @@
     }
   },
   "scripts": {
-    "build": "tsc -b && tsdown && node --check lib/index.js",
-    "typecheck": "tsc -b --pretty false",
+    "build": "tsc -b --force && tsdown && node --check lib/index.js",
+    "typecheck": "tsc -b --force --pretty false",
     "watch": "tsdown --watch"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "4.0.2",
-    "@deepseek-ai/dsh-client-ui-settings": "0.1.5-alpha.1",
+    "@deepseek-ai/dsh-client-ui-settings": "0.2.0-rc.2",
     "react": "^18.2.0"
   },
   "devDependencies": {

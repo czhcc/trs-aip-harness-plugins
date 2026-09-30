@@ -20,6 +20,9 @@ const packageDirectories = new Map([
   ['@trs-aip/dsh-skin-china-police', 'skin-china-police'],
 ])
 const vendorRoot = join(desktopRoot, 'vendor', 'trs-plugins')
+const validation = spawnPnpmSync(['run', 'validate'], { cwd: workspaceRoot, stdio: 'inherit' })
+if (validation.error !== undefined) throw validation.error
+if (validation.status !== 0) throw new Error('TRS plugin validation failed; refusing to pack incompatible plugins')
 const staging = assertInside(vendorRoot, join(vendorRoot, '.pack-staging'), 'TRS plugin pack staging directory')
 rmSync(staging, { recursive: true, force: true })
 mkdirSync(staging, { recursive: true })

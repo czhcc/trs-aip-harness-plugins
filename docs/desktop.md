@@ -1,5 +1,22 @@
 # TRS-AIP Desktop Windows 安装包建设与打包方案
 
+## 当前版本适配（DSH 0.2.0-rc.2）
+
+当前本地 Harness 已升级到 `0.2.0-rc.2`。品牌、MCP 设置和主题管理器三个插件已升级为 `0.1.1`，其 DSH `peerDependencies` 精确对齐到 `0.2.0-rc.2`。中国警察皮肤仅依赖 Cordis，保留 `0.1.0`。
+
+MCP 设置同时迁移到新版 `Config` / `configForms` 接口：宿主通过 volatile `servers` 提供可编辑表单，浏览器使用 `trs-aip-mcp-settings` entry id，配置持久化到当前 Profile patch。旧版 `settings.yaml` 的 `trs-aip-mcp` 节不会被主体工程自动映射到这个 entry；已有配置需从原文件或 `settings.yaml.imported` 中取出 `servers`，通过 MCP 页面导入保存。
+
+旧的三个 `0.1.0` 插件要求 `0.1.5-alpha.1`，会被新版 DSH 的兼容性检查拒绝。必须重新构建并打包插件，更新桌面运行时或重新安装生成的 `0.1.1` 插件 tarball；仅修改源码中的 package.json 不会更新已安装副本。工作区构建和桌面插件打包现在都会先运行版本校验。
+
+在 `trs-aip-harness-plugins/` 中执行：
+
+```powershell
+corepack pnpm run typecheck
+corepack pnpm run desktop:pack-plugins
+```
+
+插件 tarball 输出到 `desktop-distribution/vendor/trs-plugins/`。桌面发行流程随后需要同步当前版本的 DSH 已有产物，执行 `desktop:prepare-runtime`、`desktop:build` 和 `desktop:check` 后重新生成安装包。当前版本 DSH 的构建产物必须事先提供；本插件工程不得向 `deepseek-harness/` 写入或在其中执行构建。下文早期建设方案的 alpha 版本号和主体工程构建步骤属于历史说明，当前操作以本节和仓库修改边界为准。
+
 ## 1. 目标
 
 基于同级目录中的 DeepSeek Harness 源码和本仓库的 TRS-AIP 插件，生成一个可独立安装、无需用户额外安装 Node.js、pnpm 或 DeepSeek Harness 的 Windows x64 桌面应用。

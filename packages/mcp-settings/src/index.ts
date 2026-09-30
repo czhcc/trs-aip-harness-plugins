@@ -1,6 +1,6 @@
 /** Host settings registration and dynamic MCP client lifecycle coordinator. */
 
-import type { Context, Fiber } from '@deepseek-ai/cordis'
+import type { Context, Fiber, Volatile } from '@deepseek-ai/cordis'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type {} from '@deepseek-ai/dsh-credentials/types'
 import * as McpClient from '@deepseek-ai/dsh-mcp-client'
@@ -62,6 +62,27 @@ const ServerSchema = z.union([
 export const McpSettingsSchema: z<McpSettings> = z.object({
   servers: z.array(ServerSchema).default([]),
 }) as unknown as z<McpSettings>
+
+/** DSH projects editable fields from the owning plugin's volatile Config. */
+export interface Config {
+  servers: Volatile<McpServerSettings[]>
+}
+export const Config = z.object({
+  servers: z.array(ServerSchema).default([]).volatile(),
+}) as unknown as z<McpSettings, Config>
+
+// Keep the form schema serializable while enforcing domain constraints at
+// the Host standard-schema boundary, before any profile write is accepted.
+const configValidator = Config['~standard']
+Object.defineProperty(Config, '~standard', { value: {
+  ...configValidator,
+  validate(value: unknown) {
+    const result = configValidator.validate(value)
+    if ('then' in result || result.issues) return result
+    const errors = validateMcpSettings({ servers: structuredClone((result.value as Config).servers.get()) as McpServerSettings[] })
+    return errors.length > 0 ? { issues: errors.map(message => ({ message })) } : result
+  },
+} })
 
 interface ActiveServer {
   fiber: Fiber
@@ -234,24 +255,22 @@ export class McpStatusController extends TypertRemoteService {
 }
 
 /** Register settings and mount the coordinator only once Settings, Credentials and Tools exist. */
-export function apply(ctx: Context): void {
+export function apply(ctx: Context, config: Config): void {
   ctx.inject(['settings', 'credentials', 'tools'], async (runtimeCtx) => {
-    const scope = runtimeCtx.settings.register(MCP_SETTINGS_NAMESPACE, McpSettingsSchema, {
-      applies: 'live',
-      validate: (value) => {
-        const errors = validateMcpSettings(value)
-        if (errors.length > 0) throw new Error(errors.join('；'))
-      },
-    })
+    const unconfigure = runtimeCtx.settings.configure({ auto: false }, ctx.fiber)
     const status = new McpStatusDirectory(runtimeCtx)
     new McpStatusController(runtimeCtx, status)
     const coordinator = new McpCoordinator(runtimeCtx, status)
-    const unwatch = scope.watch(next => coordinator.update(next))
+    const update = () => coordinator.update({ servers: structuredClone(config.servers.get()) as McpServerSettings[] })
+    const unwatch = runtimeCtx.on('settings/document-updated', ns => {
+      if (ns === MCP_SETTINGS_NAMESPACE) void update().catch(error => runtimeCtx.logger.error(error))
+    })
     const offCredential = runtimeCtx.on('credentials/reference-updated', ref => coordinator.restartCredential(ref))
     const offTools = runtimeCtx.on('tools/change', () => { status.refreshTools() })
-    await coordinator.update(scope.get())
+    await update()
     return async () => {
       unwatch()
+      unconfigure()
       offCredential()
       offTools()
       await coordinator.dispose()

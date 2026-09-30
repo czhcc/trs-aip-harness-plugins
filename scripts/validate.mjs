@@ -34,6 +34,29 @@ const check = (condition, message) => {
   if (!condition) failures.push(message)
 }
 
+// DSH prereleases require an explicit match; broad ranges can exclude rc builds.
+const harness = await readJson('../deepseek-harness/package.json')
+for (const [directory, manifest] of [
+  ['client-branding', client],
+  ['mcp-settings', mcp],
+  ['theme-manager', themeManager],
+  ['skin-china-police', policeTheme],
+]) {
+  for (const [dependency, required] of Object.entries(manifest.peerDependencies ?? {})) {
+    if (!dependency.startsWith('@deepseek-ai/dsh-')) continue
+    check(required === harness.version,
+      `${manifest.name} 的 ${dependency} 要求 ${required}，当前 DSH 为 ${harness.version}`)
+    const link = manifest.devDependencies?.[dependency]
+    if (typeof link !== 'string' || !link.startsWith('link:../../../deepseek-harness/')) {
+      check(false, `${manifest.name} 缺少 ${dependency} 的主体工程开发链接`)
+      continue
+    }
+    const linked = await readJson(resolve(root, 'packages', directory, link.slice(5), 'package.json'))
+    check(linked.name === dependency && linked.version === harness.version,
+      `${manifest.name} 的开发依赖 ${dependency} 与当前 DSH ${harness.version} 不一致`)
+  }
+}
+
 check(client.name === '@trs-aip/dsh-client-branding', 'Client 包名不正确')
 check(client.exports?.['./client']?.default === './lib/client.js', 'Client 导出必须指向 lib/client.js')
 check(client.dsh?.client?.platform === 'web', 'Client 清单必须声明 web 平台')
@@ -82,9 +105,11 @@ check(mcp.dsh?.client?.platform === 'web', 'MCP Client 清单必须声明 web �
 check(mcp.scripts?.build?.includes('node --check lib/index.js'), 'MCP 构建必须检查 Host 产物可被 Node 解析')
 check(mcp.dsh?.client?.inject?.includes('@deepseek-ai/dsh-api-remotes'), 'MCP Client 必须注入凭据 Remote 外观')
 check(/name:\s*['"]?@trs-aip\/dsh-mcp-settings['"]?/.test(mcpPatch), 'MCP Bundle 必须插入自身插件')
-check(mcpModel.includes("MCP_SETTINGS_NAMESPACE = 'trs-aip-mcp'"), 'MCP 设置命名空间不正确')
+check(mcpModel.includes("MCP_SETTINGS_NAMESPACE = 'trs-aip-mcp-settings'"), 'MCP 设置必须使用宿主插件 entry id')
 check(mcpModel.includes('validateMcpSettings'), 'MCP 配置必须提供跨字段和唯一性校验')
-check(mcpHost.includes('settings.register(MCP_SETTINGS_NAMESPACE'), '宿主端必须注册 MCP 设置命名空间')
+check(mcpHost.includes('export const Config = z.object') && mcpHost.includes('.volatile()'), '宿主端必须通过 volatile Config 提供 MCP 配置表单')
+check(mcpHost.includes("'settings/document-updated'"), '配置变化必须更新 MCP 实例')
+check(mcpClient.includes('ctx.configForms.get<McpSettings>(MCP_SETTINGS_NAMESPACE)'), '浏览器端必须使用新版配置表单服务')
 check(mcpHost.includes('new McpCoordinator'), '宿主端必须安装 MCP 实例协调器')
 check(mcpHost.includes("credentials/reference-updated"), '凭据更新必须触发相关 MCP 实例刷新')
 check(mcpHost.includes('this.ctx.plugin(McpClient, config)'), '协调器必须动态挂载 dsh-mcp-client')

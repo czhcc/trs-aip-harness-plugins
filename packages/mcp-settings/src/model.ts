@@ -1,6 +1,7 @@
 /** Durable MCP settings shared by the Host schema owner and browser editor. */
 
-export const MCP_SETTINGS_NAMESPACE = 'trs-aip-mcp'
+// New DSH forms address the owning Cordis entry id.
+export const MCP_SETTINGS_NAMESPACE = 'trs-aip-mcp-settings'
 export const DEFAULT_TOOL_CALL_TIMEOUT_MS = 60_000
 export const DEFAULT_RECONNECT = Object.freeze({
   enabled: true,
