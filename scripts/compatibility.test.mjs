@@ -8,16 +8,17 @@ import { Config, createDefaultStdioServer } from '../packages/mcp-settings/lib/i
 import { evaluatePluginCompatibility } from '../../deepseek-harness/packages/boot/app-boot/lib/index.js'
 
 const root = resolve(import.meta.dirname, '..')
+const harnessVersion = JSON.parse(readFileSync(resolve(root, '../deepseek-harness/package.json'), 'utf8')).version
 const require = createRequire(resolve(root, 'packages/mcp-settings/package.json'))
 const Schema = require('@deepseek-ai/schemastery')
 
 test('new plugin packages pass the actual DSH compatibility gate', () => {
   for (const directory of ['client-branding', 'mcp-settings', 'theme-manager']) {
     const manifest = JSON.parse(readFileSync(resolve(root, 'packages', directory, 'package.json'), 'utf8'))
-    assert.equal(evaluatePluginCompatibility(manifest, {}, '0.2.0-rc.2'), undefined)
+    assert.equal(evaluatePluginCompatibility(manifest, {}, harnessVersion), undefined)
     const oldPeers = Object.fromEntries(Object.keys(manifest.peerDependencies)
-      .filter(name => name.startsWith('@deepseek-ai/dsh-')).map(name => [name, '0.1.5-alpha.1']))
-    assert.ok(evaluatePluginCompatibility({ ...manifest, peerDependencies: oldPeers }, {}, '0.2.0-rc.2'))
+      .filter(name => name.startsWith('@deepseek-ai/dsh-')).map(name => [name, '0.2.0-rc.2']))
+    assert.ok(evaluatePluginCompatibility({ ...manifest, version: '0.1.1', peerDependencies: oldPeers }, {}, harnessVersion))
   }
 })
 
