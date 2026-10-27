@@ -1,6 +1,6 @@
 # MCP 扩展技术方案
 
-> DSH `0.2.1-alpha.1` 适配说明：当前实现使用插件导出的 volatile `Config.servers` 和浏览器 `configForms`，表单命名空间为 Cordis entry id `trs-aip-mcp-settings`，保存位置为当前 Profile patch。下文的 `settings.register`、`settingsScope` 和 `settings.yaml` 属于旧版设计。旧配置 `trs-aip-mcp.servers` 可从 `settings.yaml` 或主体迁移后的 `settings.yaml.imported` 取出，在 MCP 页面导入保存。
+> DSH `0.2.1-rc.3` 适配说明：当前实现使用插件导出的 volatile `Config.servers` 和浏览器 `configForms`，表单命名空间为 Cordis entry id `trs-aip-mcp-settings`，保存位置为当前 Profile patch。下文的 `settings.register`、`settingsScope` 和 `settings.yaml` 属于旧版设计。旧配置 `trs-aip-mcp.servers` 可从 `settings.yaml` 或主体迁移后的 `settings.yaml.imported` 取出，在 MCP 页面导入保存。
 
 ## 1. 背景
 
