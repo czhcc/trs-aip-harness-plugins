@@ -1,0 +1,3 @@
+# Synthetic PDF xref offsets and ZIP bytes must survive checkout unchanged.
+* -text
+*.md text eol=lf

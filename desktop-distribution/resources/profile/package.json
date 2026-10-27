@@ -7,7 +7,8 @@
     "@trs-aip/dsh-client-branding": "__BRANDING_VERSION__",
     "@trs-aip/dsh-mcp-settings": "__MCP_VERSION__",
     "@trs-aip/dsh-theme-manager": "__THEME_VERSION__",
-    "@trs-aip/dsh-skin-china-police": "__SKIN_VERSION__"
+    "@trs-aip/dsh-skin-china-police": "__SKIN_VERSION__",
+    "@trs-aip/dsh-knowledge-rag": "__RAG_VERSION__"
   },
   "dsh": {
     "profile": {
@@ -18,7 +19,8 @@
         "@trs-aip/dsh-client-branding",
         "@trs-aip/dsh-mcp-settings",
         "@trs-aip/dsh-theme-manager",
-        "@trs-aip/dsh-skin-china-police"
+        "@trs-aip/dsh-skin-china-police",
+        "@trs-aip/dsh-knowledge-rag"
       ]
     }
   }

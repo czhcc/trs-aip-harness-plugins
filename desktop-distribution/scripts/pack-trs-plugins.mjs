@@ -18,6 +18,7 @@ const packageDirectories = new Map([
   ['@trs-aip/dsh-mcp-settings', 'mcp-settings'],
   ['@trs-aip/dsh-theme-manager', 'theme-manager'],
   ['@trs-aip/dsh-skin-china-police', 'skin-china-police'],
+  ['@trs-aip/dsh-knowledge-rag', 'knowledge-rag'],
 ])
 const vendorRoot = join(desktopRoot, 'vendor', 'trs-plugins')
 const validation = spawnPnpmSync(['run', 'validate'], { cwd: workspaceRoot, stdio: 'inherit' })
@@ -31,7 +32,8 @@ const packed = []
 for (const name of TRS_PACKAGES) {
   const directory = packageDirectories.get(name)
   const sourceManifest = readJson(join(workspaceRoot, 'packages', directory, 'package.json'))
-  for (const required of ['lib/index.js', 'lib/client.js', 'cordis.patch.yml']) {
+  const requiredFiles = ['lib/index.js', 'lib/client.js', 'cordis.patch.yml', ...(name === '@trs-aip/dsh-knowledge-rag' ? ['lib/worker.js', 'third_party/TsLightRAG-LICENSE'] : [])]
+  for (const required of requiredFiles) {
     if (!existsSync(join(workspaceRoot, 'packages', directory, required))) {
       throw new Error(`${name} is not built: missing ${required}; run the workspace build before packing`)
     }
@@ -49,7 +51,7 @@ for (const name of TRS_PACKAGES) {
     throw new Error(`${filename} identity does not match ${name}@${sourceManifest.version}`)
   }
   const entries = new Set(readPackedEntries(tarball))
-  for (const required of ['package/lib/index.js', 'package/lib/client.js', 'package/cordis.patch.yml']) {
+  for (const required of requiredFiles.map(path => `package/${path}`)) {
     if (!entries.has(required)) throw new Error(`${filename} is missing ${required}`)
   }
   const data = readFileSync(tarball)

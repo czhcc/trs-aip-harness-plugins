@@ -15,6 +15,7 @@ export const TRS_PACKAGES = [
   '@trs-aip/dsh-mcp-settings',
   '@trs-aip/dsh-theme-manager',
   '@trs-aip/dsh-skin-china-police',
+  '@trs-aip/dsh-knowledge-rag',
 ]
 
 function isPnpmJavaScriptCli(path) {

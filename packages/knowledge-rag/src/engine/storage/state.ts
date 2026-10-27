@@ -1,0 +1,156 @@
+import { LedgerSchema, entityId, hash } from '../indexing/extraction.js';
+import { edgeId } from './graph.js';
+import { ChunkSchema, DocumentSchema, JobSchema, IdSchema, IndexBindingSchema, CleanupTaskSchema, ConversationSchema } from '../../contracts/index.js';
+import { z } from 'zod';
+import { MemoryKV, JsonSchema } from './kv.js';
+import { MemoryVectors } from './vectors.js';
+import type { VectorSpace } from './vectors.js';
+import { MemoryGraph } from './graph.js';
+
+export const KV_NAMES = ['fullDocs', 'textChunks', 'extractions', 'fullEntities', 'fullRelations', 'entityChunks', 'relationChunks', 'caches'] as const;
+export type KVName = typeof KV_NAMES[number];
+export const VECTOR_NAMES = ['chunks', 'entities', 'relations'] as const;
+export const FILE_NAMES = ['kv.json', 'document-status.json', 'vectors-chunks.json', 'vectors-entities.json', 'vectors-relations.json', 'graph.json'] as const;
+export type FileName = typeof FILE_NAMES[number];
+export type Files = Record<FileName, unknown>;
+const rows = z.array(z.tuple([IdSchema, JsonSchema]));
+const KvFileSchema = z.strictObject({
+  fullDocs: rows, textChunks: rows, extractions: rows, fullEntities: rows,
+  fullRelations: rows, entityChunks: rows, relationChunks: rows, caches: rows,
+});
+export const StoredDocumentSchema = DocumentSchema.extend({ content: z.string().optional(), chunkIds: z.array(IdSchema).optional() });
+export { ChunkSchema } from '../../contracts/index.js';
+
+const StatusFileSchema = z.strictObject({
+  documents: z.array(z.tuple([IdSchema, DocumentSchema])), jobs: z.array(z.tuple([IdSchema, JobSchema])),
+  indexBinding: IndexBindingSchema.optional(), cleanupTasks: z.array(CleanupTaskSchema).optional(),
+  conversations: z.array(z.tuple([IdSchema, ConversationSchema])).max(200).optional(),
+});
+type Document = z.infer<typeof DocumentSchema>;
+type Job = z.infer<typeof JobSchema>;
+
+function sameKeys(actual: string[], expected: string[], label: string) {
+  if (new Set(actual).size !== actual.length || JSON.stringify([...actual].sort()) !== JSON.stringify([...expected].sort())) {
+    throw new Error(`Invalid ${label} references`);
+  }
+}
+function add(map: Map<string, Set<string>>, id: string, value: string) {
+  const values = map.get(id) ?? new Set<string>(); values.add(value); map.set(id, values);
+}
+function checkIndex(kv: MemoryKV, expected: Map<string, Set<string>>, name: string) {
+  sameKeys(kv.entries().map(([id]) => id), [...expected.keys()], name);
+  for (const [id, values] of expected) sameKeys(z.array(IdSchema).parse(kv.get(id)), [...values], name);
+}
+
+/** A candidate is mutable; only SnapshotStore can publish it. */
+export class WorkspaceDraft {
+  indexBinding: z.infer<typeof IndexBindingSchema> | undefined;
+  cleanupTasks: z.infer<typeof CleanupTaskSchema>[] = [];
+  kv = Object.fromEntries(KV_NAMES.map((name) => [name, new MemoryKV()])) as Record<KVName, MemoryKV>;
+  documents = new MemoryKV<Document>((value) => DocumentSchema.parse(value));
+  jobs = new MemoryKV<Job>((value) => JobSchema.parse(value));
+  conversations = new MemoryKV<z.infer<typeof ConversationSchema>>((value) => ConversationSchema.parse(value));
+  vectors = { chunks: new MemoryVectors(), entities: new MemoryVectors(), relations: new MemoryVectors() };
+  graph = new MemoryGraph();
+  setEmbeddingSpace(space: VectorSpace) {
+    if (VECTOR_NAMES.some((name) => this.vectors[name].size)) throw new Error('Rebuild required before changing embedding space');
+    for (const name of VECTOR_NAMES) this.vectors[name] = new MemoryVectors(space);
+  }
+  serialize(): Files {
+    return {
+      'kv.json': Object.fromEntries(KV_NAMES.map((name) => [name, this.kv[name].entries()])),
+      'document-status.json': { documents: this.documents.entries(), jobs: this.jobs.entries(), ...(this.indexBinding ? {indexBinding: this.indexBinding} : {}), ...(this.cleanupTasks.length ? {cleanupTasks: this.cleanupTasks} : {}), ...(this.conversations.size ? {conversations: this.conversations.entries()} : {}) },
+      'vectors-chunks.json': this.vectors.chunks.serialize(), 'vectors-entities.json': this.vectors.entities.serialize(),
+      'vectors-relations.json': this.vectors.relations.serialize(), 'graph.json': this.graph.serialize(),
+    };
+  }
+  static restore(files: Files) {
+    const draft = new WorkspaceDraft();
+    const kv = KvFileSchema.parse(files['kv.json']);
+    for (const name of KV_NAMES) draft.kv[name] = MemoryKV.restore(kv[name], (value) => JsonSchema.parse(value));
+    const statuses = StatusFileSchema.parse(files['document-status.json']);
+    draft.indexBinding = statuses.indexBinding; draft.cleanupTasks = statuses.cleanupTasks ?? [];
+    draft.documents = MemoryKV.restore(statuses.documents, (value) => DocumentSchema.parse(value));
+    draft.jobs = MemoryKV.restore(statuses.jobs, (value) => JobSchema.parse(value));
+    draft.conversations = MemoryKV.restore(statuses.conversations ?? [], (value) => ConversationSchema.parse(value));
+    for (const name of VECTOR_NAMES) draft.vectors[name] = MemoryVectors.restore(files[`vectors-${name}.json`]);
+    draft.graph = MemoryGraph.restore(files['graph.json']);
+    draft.validate(); return draft;
+  }
+  validate() {
+    for (const [id, conversation] of this.conversations.entries()) if (id !== conversation.id) throw new Error('Conversation identity mismatch');
+    const docs = new Map(this.kv.fullDocs.entries().map(([id, value]) => {
+      const doc = StoredDocumentSchema.parse(value);
+      if (doc.id !== id) throw new Error('Document identity mismatch');
+      return [id, doc];
+    }));
+    sameKeys(this.documents.entries().map(([id]) => id), [...docs.keys()], 'document status');
+    for (const [id, doc] of docs) {
+      const status = this.documents.get(id);
+      const metadata = { ...doc }; delete metadata.content; delete metadata.chunkIds;
+      if (JSON.stringify(status) !== JSON.stringify(DocumentSchema.parse(metadata))) throw new Error('Document status mismatch');
+    }
+    for (const [id, job] of this.jobs.entries()) {
+      if (job.id !== id || (job.documentId !== null && !docs.has(job.documentId))) throw new Error('Job document reference mismatch');
+    }
+    for (const doc of docs.values()) if (doc.ingestion) {
+      const job = this.jobs.get(doc.ingestion.latestJobId);
+      if (doc.ingestion.sourceKey !== `${doc.contentHash}.blob` || !job || job.documentId !== doc.id || job.status !== doc.status) throw new Error('Ingestion job/source reference mismatch');
+    }
+    for (const job of this.jobs.entries().map(([, value]) => value)) {
+      if (job.previousJobId) { const previous = this.jobs.get(job.previousJobId);
+        if (!previous || previous.documentId !== job.documentId || previous.attempt + 1 !== job.attempt) throw new Error('Job attempt chain mismatch'); }
+      if (job.result && job.result.artifactKey !== `${job.id}/prepared.json`) throw new Error('Job artifact identity mismatch');
+    }
+    const chunks = new Map(this.kv.textChunks.entries().map(([id, value]) => {
+      const chunk = ChunkSchema.parse(value); const doc = docs.get(chunk.docId);
+      if (chunk.id !== id || !doc || doc.version !== chunk.docVersion || doc.status !== 'processed') throw new Error('Chunk document reference mismatch');
+      return [id, chunk];
+    }));
+    for (const [id, chunk] of chunks) if (chunk.indexVersion && !this.kv.extractions.get(id)) throw new Error('Indexed chunk extraction missing');
+    for (const doc of docs.values()) if (doc.chunkIds) sameKeys(doc.chunkIds, [...chunks.values()].filter((c) => c.docId === doc.id).map((c) => c.id), 'document chunks');
+    const docEntities = new Map<string, Set<string>>(); const docRelations = new Map<string, Set<string>>();
+    for (const [id, doc] of docs) {
+      if (doc.status === 'processed') {
+        if (![...chunks.values()].some((chunk) => chunk.docId === id)) throw new Error('Processed document has no chunks');
+        docEntities.set(id, new Set()); docRelations.set(id, new Set());
+      }
+    }
+    for (const [id] of this.kv.extractions.entries()) if (!chunks.has(id)) throw new Error('Extraction chunk missing');
+    for (const [id, value] of this.kv.extractions.entries()) if (value && typeof value === 'object' && 'version' in value) {
+      const ledger = LedgerSchema.parse(value); const chunk = chunks.get(id)!;
+      if (ledger.contentHash !== hash(chunk.content)) throw new Error('Extraction content identity mismatch');
+      const names = new Set(ledger.contribution.entities.map((e) => e.name));
+      for (const e of ledger.contribution.entities) if (!this.graph.getNode(entityId(e.name))?.sourceChunkIds.includes(id)) throw new Error('Missing entity contribution anchor');
+      for (const r of ledger.contribution.relationships) {
+        if (!names.has(r.source) || !names.has(r.target) || !this.graph.getEdge(entityId(r.source), entityId(r.target))?.sourceChunkIds.includes(id)) throw new Error('Missing relation contribution anchor');
+      }
+      for (const node of this.graph.serialize().nodes) if (node.sourceChunkIds.includes(id) && !ledger.contribution.entities.some((e) => entityId(e.name) === node.id)) throw new Error('Untracked entity contribution');
+      for (const edge of this.graph.serialize().edges) if (edge.sourceChunkIds.includes(id) && !ledger.contribution.relationships.some((r) => edgeId(entityId(r.source), entityId(r.target)) === edge.id)) throw new Error('Untracked relation contribution');
+    }
+    const graph = this.graph.serialize();
+    const entityChunks = new Map<string, Set<string>>(); const relationChunks = new Map<string, Set<string>>();
+    for (const node of graph.nodes) {
+      entityChunks.set(node.id, new Set(node.sourceChunkIds));
+      for (const id of node.sourceChunkIds) {
+        const chunk = chunks.get(id); if (!chunk) throw new Error('Graph source chunk missing');
+        add(docEntities, chunk.docId, node.id);
+      }
+    }
+    for (const edge of graph.edges) {
+      relationChunks.set(edge.id, new Set(edge.sourceChunkIds));
+      for (const id of edge.sourceChunkIds) {
+        const chunk = chunks.get(id); if (!chunk) throw new Error('Graph source chunk missing');
+        add(docRelations, chunk.docId, edge.id);
+      }
+    }
+    checkIndex(this.kv.fullEntities, docEntities, 'fullEntities'); checkIndex(this.kv.fullRelations, docRelations, 'fullRelations');
+    checkIndex(this.kv.entityChunks, entityChunks, 'entityChunks'); checkIndex(this.kv.relationChunks, relationChunks, 'relationChunks');
+    sameKeys(this.vectors.chunks.serialize().rows.map((row) => row.id), [...chunks.keys()], 'chunk vectors');
+    sameKeys(this.vectors.entities.serialize().rows.map((row) => row.id), graph.nodes.map((node) => node.id), 'entity vectors');
+    sameKeys(this.vectors.relations.serialize().rows.map((row) => row.id), graph.edges.map((edge) => edge.id), 'relation vectors');
+    const spaces = VECTOR_NAMES.map((name) => JSON.stringify(this.vectors[name].space));
+    if (new Set(spaces).size !== 1) throw new Error('Mixed embedding spaces');
+    if (this.indexBinding && this.vectors.chunks.space?.id !== this.indexBinding.spaceId) throw new Error('Active index binding mismatch');
+  }
+}

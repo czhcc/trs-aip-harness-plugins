@@ -8,8 +8,8 @@
     "node": "^22.19.0 || >=24.0.0"
   },
   "scripts": {
-    "build": "pnpm run validate && pnpm --filter @trs-aip/dsh-client-branding --filter @trs-aip/dsh-mcp-settings --filter @trs-aip/dsh-theme-manager --filter @trs-aip/dsh-skin-china-police run build",
-    "typecheck": "pnpm --filter @trs-aip/dsh-client-branding --filter @trs-aip/dsh-mcp-settings --filter @trs-aip/dsh-theme-manager --filter @trs-aip/dsh-skin-china-police run typecheck",
+    "build": "pnpm run validate && pnpm --filter @trs-aip/dsh-client-branding --filter @trs-aip/dsh-mcp-settings --filter @trs-aip/dsh-theme-manager --filter @trs-aip/dsh-skin-china-police --filter @trs-aip/dsh-knowledge-rag run build",
+    "typecheck": "pnpm --filter @trs-aip/dsh-client-branding --filter @trs-aip/dsh-mcp-settings --filter @trs-aip/dsh-theme-manager --filter @trs-aip/dsh-skin-china-police --filter @trs-aip/dsh-knowledge-rag run typecheck",
     "validate": "node scripts/validate.mjs",
     "desktop:sync-runtime": "pnpm --dir desktop-distribution run sync-runtime",
     "desktop:pack-plugins": "pnpm run build && pnpm --dir desktop-distribution run pack-plugins",
@@ -17,7 +17,8 @@
     "desktop:build": "pnpm --dir desktop-distribution run build",
     "desktop:check": "pnpm --dir desktop-distribution run check",
     "dist:win": "pnpm run desktop:sync-runtime && pnpm run desktop:pack-plugins && pnpm run desktop:prepare-runtime && pnpm run desktop:build && pnpm run desktop:check && pnpm --dir desktop-distribution run dist:win",
-    "dist:win-portable": "pnpm run desktop:sync-runtime && pnpm run desktop:pack-plugins && pnpm run desktop:prepare-runtime && pnpm run desktop:build && pnpm run desktop:check && pnpm --dir desktop-distribution run dist:win-portable"
+    "dist:win-portable": "pnpm run desktop:sync-runtime && pnpm run desktop:pack-plugins && pnpm run desktop:prepare-runtime && pnpm run desktop:build && pnpm run desktop:check && pnpm --dir desktop-distribution run dist:win-portable",
+    "test:rag": "pnpm --filter @trs-aip/dsh-knowledge-rag test"
   },
   "devDependencies": {
     "@types/react": "~18.3.1",

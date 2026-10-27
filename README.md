@@ -8,6 +8,7 @@
 - `@trs-aip/dsh-mcp-settings`：双面插件，负责注册 `trs-aip-mcp` 设置命名空间、解析凭据引用、串行协调 MCP Client 实例，并贡献独立的“MCP 客户端”设置页面。
 - `@trs-aip/dsh-theme-manager`：常驻的主题管理器，通过已安装包的 `skin.json` 自动发现主题，在设置页完成互斥切换，并提供“DeepSeek Harness 原版”选项。
 - `@trs-aip/dsh-skin-china-police`：首个主题包，提供“中国警察”浅色/深色配色、卡通场景背景和可完整回收的浏览器展示层。
+- `@trs-aip/dsh-knowledge-rag`：基于 TsLightRAG 的本地知识库插件，提供右侧知识问答、检索预览、知识图谱与文档管理，以及中间 DSH 对话的按会话检索开关。使用 DSH 文本模型、Credentials 和主题，向量及可选重排在插件设置中配置。详见 [使用说明](packages/knowledge-rag/README.md) 和 [开发验收](docs/TsLightRAG插件开发验收.md)。
 
 ## 开发环境
 
@@ -33,7 +34,7 @@ pnpm run build
 ## Windows 桌面安装包
 
 `desktop-distribution/` 提供独立的 Electron 桌面发行层。它会固定当前同级
-`deepseek-harness/` 的完整 DSH tarball 集，打包四个 TRS-AIP 插件，在用户目录
+`deepseek-harness/` 的完整 DSH tarball 集，打包五个 TRS-AIP 插件，在用户目录
 `%USERPROFILE%\.deepseek-harness\profiles\trs-desktop` 初始化专用 Profile，并生成未签名的
 Windows x64 安装程序和免安装 ZIP：
 
@@ -72,6 +73,7 @@ pnpm dsh plugin --profile web add file:../trs-aip-harness-plugins/packages/clien
 pnpm dsh plugin --profile web add file:../trs-aip-harness-plugins/packages/mcp-settings
 pnpm dsh plugin --profile web add file:../trs-aip-harness-plugins/packages/theme-manager
 pnpm dsh plugin --profile web add file:../trs-aip-harness-plugins/packages/skin-china-police
+pnpm dsh plugin --profile web add file:../trs-aip-harness-plugins/packages/knowledge-rag
 pnpm dsh --profile web --dump-config
 pnpm dsh --profile web
 ```
@@ -83,6 +85,7 @@ pnpm --dir ../deepseek-harness dsh plugin --profile web add file:../trs-aip-harn
 pnpm --dir ../deepseek-harness dsh plugin --profile web add file:../trs-aip-harness-plugins/packages/mcp-settings
 pnpm --dir ../deepseek-harness dsh plugin --profile web add file:../trs-aip-harness-plugins/packages/theme-manager
 pnpm --dir ../deepseek-harness dsh plugin --profile web add file:../trs-aip-harness-plugins/packages/skin-china-police
+pnpm --dir ../deepseek-harness dsh plugin --profile web add file:../trs-aip-harness-plugins/packages/knowledge-rag
 pnpm --dir ../deepseek-harness dsh --profile web --dump-config
 pnpm --dir ../deepseek-harness dsh --profile web
 ```
@@ -97,6 +100,7 @@ pnpm dsh plugin --profile web add link:../trs-aip-harness-plugins/packages/clien
 pnpm dsh plugin --profile web add link:../trs-aip-harness-plugins/packages/mcp-settings
 pnpm dsh plugin --profile web add link:../trs-aip-harness-plugins/packages/theme-manager
 pnpm dsh plugin --profile web add link:../trs-aip-harness-plugins/packages/skin-china-police
+pnpm dsh plugin --profile web add link:../trs-aip-harness-plugins/packages/knowledge-rag
 ```
 
 `link:` 会让 Web profile 中的包直接指向当前插件目录。首次安装后，修改源码只需重新执行 `pnpm run build` 并重启 Harness，不需要再次执行 `plugin add`。

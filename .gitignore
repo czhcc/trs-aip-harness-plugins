@@ -2,3 +2,6 @@ node_modules/
 packages/*/lib/
 *.tgz
 
+
+.cache/
+packages/knowledge-rag/.test-data/

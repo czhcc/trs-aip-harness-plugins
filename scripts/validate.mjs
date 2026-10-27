@@ -28,6 +28,8 @@ const policeManifest = await readJson('packages/skin-china-police/skin.json')
 const policePatch = await readText('packages/skin-china-police/cordis.patch.yml')
 const policeClient = await readText('packages/skin-china-police/src/client/index.ts')
 const policeStyles = await readText('packages/skin-china-police/src/client/styles.ts')
+const rag = await readJson('packages/knowledge-rag/package.json')
+const ragPatch = await readText('packages/knowledge-rag/cordis.patch.yml')
 
 const failures = []
 const check = (condition, message) => {
@@ -41,6 +43,7 @@ for (const [directory, manifest] of [
   ['mcp-settings', mcp],
   ['theme-manager', themeManager],
   ['skin-china-police', policeTheme],
+  ['knowledge-rag', rag],
 ]) {
   for (const [dependency, required] of Object.entries(manifest.peerDependencies ?? {})) {
     if (!dependency.startsWith('@deepseek-ai/dsh-')) continue
@@ -161,9 +164,15 @@ check(policeClient.includes('china-police-dark.png?inline'), '中国警察主题
 check(policeClient.includes('data-china-police-owner'), '中国警察主题必须按实例回收 DOM')
 check(policeStyles.includes('body[data-dsh-china-police][data-ds-dark-theme]'), '中国警察主题必须适配深色模式')
 
+check(rag.name === '@trs-aip/dsh-knowledge-rag', '知识库包名不正确')
+check(rag.exports?.['./client']?.default === './lib/client.js', '知识库 Client 导出必须指向 lib/client.js')
+check(rag.dsh?.bundle?.patch === './cordis.patch.yml', '知识库 Bundle 必须提供 patch')
+check(ragPatch.includes('id: trs-aip-knowledge-rag'), '知识库设置命名空间必须与 Loader entry id 一致')
+check(rag.dsh?.client?.inject?.includes('@deepseek-ai/dsh-client-ui-sidebar-right'), '知识库必须依赖右侧栏')
+
 if (failures.length > 0) {
   console.error(`校验失败：\n- ${failures.join('\n- ')}`)
   process.exitCode = 1
 } else {
-  console.log('校验通过：品牌插件、MCP 设置、主题管理器与中国警察主题')
+  console.log('校验通过：品牌插件、MCP 设置、主题管理器、中国警察主题与知识库插件')
 }

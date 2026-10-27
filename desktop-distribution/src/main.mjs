@@ -36,6 +36,7 @@ const REQUIRED_CORE_CLIENT_MODULES = [
   '@trs-aip/dsh-client-branding',
   '@trs-aip/dsh-mcp-settings',
   '@trs-aip/dsh-theme-manager',
+  '@trs-aip/dsh-knowledge-rag',
 ]
 const MANAGED_THEME_CLIENT_MODULES = [
   '@trs-aip/dsh-skin-china-police',
@@ -167,6 +168,7 @@ function materializeProfile() {
     ['__MCP_VERSION__', versions['@trs-aip/dsh-mcp-settings']],
     ['__THEME_VERSION__', versions['@trs-aip/dsh-theme-manager']],
     ['__SKIN_VERSION__', versions['@trs-aip/dsh-skin-china-police']],
+    ['__RAG_VERSION__', versions['@trs-aip/dsh-knowledge-rag']],
   ])
   let templateText = readFileSync(join(templateDir, 'package.json'), 'utf8')
   for (const [placeholder, version] of replacements) {

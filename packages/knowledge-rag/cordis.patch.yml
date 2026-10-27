@@ -1,0 +1,3 @@
+- insert:
+    - id: trs-aip-knowledge-rag
+      name: '@trs-aip/dsh-knowledge-rag'
