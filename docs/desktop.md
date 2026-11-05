@@ -1,12 +1,14 @@
 # TRS-AIP Desktop Windows 安装包建设与打包方案
 
-## 当前版本适配（DSH 0.2.1-rc.3）
+## 当前版本适配（DSH 0.2.2-alpha.3）
 
-当前本地 Harness 已升级到 `0.2.1-rc.3`。品牌、MCP 设置和主题管理器三个插件已升级为 `0.1.3`，其 DSH `peerDependencies` 精确对齐到 `0.2.1-rc.3`。中国警察皮肤仅依赖 Cordis，保留 `0.1.0`。
+当前本地 Harness 已升级到 `0.2.2-alpha.3`。品牌、MCP 设置和主题管理器三个插件已升级为 `0.1.4`，知识库插件升级为 `0.1.1`，四者的 DSH `peerDependencies` 精确对齐到 `0.2.2-alpha.3`，Cordis / Schemastery 依赖同步对齐当前宿主。中国警察皮肤保留 `0.1.0`。
+
+MCP 实例配置适配新版客户端：关闭清理超时为 5000 ms，关闭宿主模板展开，继续由插件解析凭据引用并保留字面值。
 
 MCP 设置同时迁移到新版 `Config` / `configForms` 接口：宿主通过 volatile `servers` 提供可编辑表单，浏览器使用 `trs-aip-mcp-settings` entry id，配置持久化到当前 Profile patch。旧版 `settings.yaml` 的 `trs-aip-mcp` 节不会被主体工程自动映射到这个 entry；已有配置需从原文件或 `settings.yaml.imported` 中取出 `servers`，通过 MCP 页面导入保存。
 
-旧的三个 `0.1.2` 插件要求 `0.2.1-alpha.1`，会被新版 DSH 的兼容性检查拒绝。必须重新构建并打包插件，更新桌面运行时或重新安装生成的 `0.1.3` 插件 tarball；仅修改源码中的 package.json 不会更新已安装副本。工作区构建和桌面插件打包现在都会先运行版本校验。
+旧的三个 `0.1.3` 插件和知识库 `0.1.0` 要求 `0.2.1-rc.3`，会被新版 DSH 的兼容性检查拒绝。必须重新构建并打包插件，更新桌面运行时或重新安装生成的三个 `0.1.4` 和知识库 `0.1.1` 插件 tarball；仅修改源码中的 package.json 不会更新已安装副本。工作区构建和桌面插件打包现在都会先运行版本校验。
 
 在 `trs-aip-harness-plugins/` 中执行：
 

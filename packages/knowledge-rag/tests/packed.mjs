@@ -7,7 +7,8 @@ import { pathToFileURL } from 'node:url'
 // npm pack must run first. This test never downloads or installs dependencies.
 const packageRoot = resolve('.test-data/installed/node_modules/@trs-aip/dsh-knowledge-rag')
 await mkdir(packageRoot, { recursive: true })
-const extracted = spawnSync('tar', ['-xzf', '.test-data/trs-aip-dsh-knowledge-rag-0.1.0.tgz', '-C', packageRoot, '--strip-components=1'], { encoding: 'utf8' })
+const sourceManifest = JSON.parse(await readFile('package.json', 'utf8'))
+const extracted = spawnSync('tar', ['-xzf', `.test-data/trs-aip-dsh-knowledge-rag-${sourceManifest.version}.tgz`, '-C', packageRoot, '--strip-components=1'], { encoding: 'utf8' })
 assert.equal(extracted.status, 0, extracted.stderr)
 const packageJson = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8'))
 assert.equal(packageJson.name, '@trs-aip/dsh-knowledge-rag')

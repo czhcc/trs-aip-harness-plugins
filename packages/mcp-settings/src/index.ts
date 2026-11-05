@@ -215,6 +215,9 @@ export class McpCoordinator {
     const common = {
       serverName: server.serverName,
       toolCallTimeoutMs: server.toolCallTimeoutMs,
+      closeTimeoutMs: 5_000,
+      // Credentials are already resolved above; literal values must stay literal.
+      expandTemplates: false,
       failOnStartupError: server.failOnStartupError,
       reconnect: server.reconnect,
     }
