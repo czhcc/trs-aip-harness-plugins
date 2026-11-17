@@ -1,7 +1,7 @@
 {
   "name": "@trs-aip/dsh-client-branding",
   "description": "Installable TRS-AIP brand occupants and theme-token overrides for the DSH Web Client",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
@@ -46,11 +46,11 @@
     "watch": "tsdown --watch"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "4.0.6-alpha.2",
-    "@deepseek-ai/dsh-client-ui-conversation": "0.2.2-alpha.3",
-    "@deepseek-ai/dsh-client-ui-renderer": "0.2.2-alpha.3",
-    "@deepseek-ai/dsh-client-ui-sidebar": "0.2.2-alpha.3",
-    "@deepseek-ai/dsh-client-ui-theme": "0.2.2-alpha.3"
+    "@deepseek-ai/cordis": "4.1.0",
+    "@deepseek-ai/dsh-client-ui-conversation": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-client-ui-renderer": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-client-ui-sidebar": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-client-ui-theme": "0.2.2-rc.3"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "link:../../../deepseek-harness/vendor/cordis",

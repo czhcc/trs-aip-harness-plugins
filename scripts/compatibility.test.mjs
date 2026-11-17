@@ -17,8 +17,8 @@ test('new plugin packages pass the actual DSH compatibility gate', () => {
     const manifest = JSON.parse(readFileSync(resolve(root, 'packages', directory, 'package.json'), 'utf8'))
     assert.equal(evaluatePluginCompatibility(manifest, {}, harnessVersion), undefined)
     const oldPeers = Object.fromEntries(Object.keys(manifest.peerDependencies)
-      .filter(name => name.startsWith('@deepseek-ai/dsh-')).map(name => [name, '0.2.1-rc.3']))
-    assert.ok(evaluatePluginCompatibility({ ...manifest, version: directory === 'knowledge-rag' ? '0.1.0' : '0.1.3', peerDependencies: oldPeers }, {}, harnessVersion))
+      .filter(name => name.startsWith('@deepseek-ai/dsh-')).map(name => [name, '0.2.2-alpha.3']))
+    assert.ok(evaluatePluginCompatibility({ ...manifest, version: directory === 'knowledge-rag' ? '0.1.1' : '0.1.4', peerDependencies: oldPeers }, {}, harnessVersion))
   }
 })
 
